@@ -1,0 +1,622 @@
+// DMR — Prisma schema.
+// Область Этапа 1: Venue, столы/QR, translation-first меню, налоги, медиа,
+// персонал/RBAC, аудит. Модели Этапа 2+ (сессии, заказы, производство,
+// биллинг, платежи) добавляются отдельными миграциями по одобрению владельца.
+//
+// Правила (docs/data-model.md, docs/payment-model.md §2):
+//  - деньги — целые minor units (центы), поля *Cents, тип Int, валюта EUR;
+//  - переводы — отдельные *Translation-таблицы, НЕ колонки nameDe/nameEn;
+//  - AuditLog/LifecycleEvent — append-only, без операций удаления.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ProductionStationKind {
+  KITCHEN
+  BAR
+  OTHER
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+}
+
+enum MediaStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum SpiceLevel {
+  NONE
+  MILD
+  MEDIUM
+  HOT
+}
+
+enum ModifierSelectionType {
+  SINGLE
+  MULTIPLE
+}
+
+enum StaffUserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum AuditActorType {
+  STAFF
+  SYSTEM
+  GUEST
+}
+
+// ---------------------------------------------------------------------------
+// Venue / инфраструктура
+// ---------------------------------------------------------------------------
+
+model Venue {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  defaultLocale  String   @default("de")
+  currency       String   @default("EUR")
+  timeZone       String   @default("Europe/Berlin")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  settings   VenueSetting[]
+  tables     DiningTable[]
+  categories MenuCategory[]
+  items      MenuItem[]
+  taxProfiles TaxProfile[]
+  stations   ProductionStation[]
+  staff      StaffUser[]
+
+  @@map("venues")
+}
+
+model VenueSetting {
+  id        String   @id @default(cuid())
+  venueId   String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, key])
+  @@map("venue_settings")
+}
+
+model DiningTable {
+  id        String   @id @default(cuid())
+  venueId   String
+  label     String
+  seats     Int?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venue     Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  qrTokens  TableQrToken[]
+
+  @@unique([venueId, label])
+  @@map("dining_tables")
+}
+
+/// Opaque непрогнозируемый токен стола. Не последовательный ID.
+/// Ротация = создание нового токена + revokedAt у старого.
+model TableQrToken {
+  id        String    @id @default(cuid())
+  tableId   String
+  token     String    @unique
+  issuedAt  DateTime  @default(now())
+  revokedAt DateTime?
+  revokedBy String?
+
+  table DiningTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@index([tableId, revokedAt])
+  @@map("table_qr_tokens")
+}
+
+model ProductionStation {
+  id        String                @id @default(cuid())
+  venueId   String
+  kind      ProductionStationKind
+  name      String
+  isActive  Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  venue Venue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  items MenuItem[]
+
+  @@unique([venueId, kind, name])
+  @@map("production_stations")
+}
+
+// ---------------------------------------------------------------------------
+// Налоги
+// ---------------------------------------------------------------------------
+
+/// Ставка НДС настраивается владельцем/бухгалтером, не хардкодится.
+/// rateBasisPoints: 1900 = 19,00 %.
+model TaxProfile {
+  id              String   @id @default(cuid())
+  venueId         String
+  code            String
+  name            String
+  rateBasisPoints Int
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  venue    Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  items    MenuItem[]
+  variants MenuVariant[]
+
+  @@unique([venueId, code])
+  @@map("tax_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Меню (translation-first)
+// ---------------------------------------------------------------------------
+
+model MenuCategory {
+  id          String   @id @default(cuid())
+  venueId     String
+  slug        String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  venue        Venue                     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  translations MenuCategoryTranslation[]
+  items        MenuItem[]
+
+  @@unique([venueId, slug])
+  @@index([venueId, isPublished, sortOrder])
+  @@map("menu_categories")
+}
+
+model MenuCategoryTranslation {
+  id          String  @id @default(cuid())
+  categoryId  String
+  locale      String
+  title       String
+  description String?
+
+  category MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, locale])
+  @@map("menu_category_translations")
+}
+
+model MenuItem {
+  id            String     @id @default(cuid())
+  venueId       String
+  categoryId    String
+  stationId     String?
+  taxProfileId  String?
+  slug          String
+  basePriceCents Int
+  isPublished   Boolean    @default(false)
+  isAvailable   Boolean    @default(true)
+  spiceLevel    SpiceLevel @default(NONE)
+  sortOrder     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  venue        Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  category     MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  station      ProductionStation?    @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  taxProfile   TaxProfile?           @relation(fields: [taxProfileId], references: [id], onDelete: SetNull)
+  translations MenuItemTranslation[]
+  variants     MenuVariant[]
+  modifierGroups ModifierGroup[]
+  media        MediaAsset[]
+  allergens    MenuItemAllergen[]
+  additives    MenuItemAdditive[]
+  dietaryTags  MenuItemDietaryTag[]
+
+  @@unique([venueId, slug])
+  @@index([categoryId, isPublished, sortOrder])
+  @@map("menu_items")
+}
+
+model MenuItemTranslation {
+  id               String  @id @default(cuid())
+  itemId           String
+  locale           String
+  name             String
+  shortDescription String?
+  fullDescription  String?
+  ingredients      String?
+
+  item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, locale])
+  @@map("menu_item_translations")
+}
+
+model MenuVariant {
+  id           String   @id @default(cuid())
+  itemId       String
+  taxProfileId String?
+  sku          String?
+  priceCents   Int
+  /// Масса/объём в граммах или миллилитрах, для карточки блюда.
+  amountValue  Int?
+  amountUnit   String?
+  isDefault    Boolean  @default(false)
+  isAvailable  Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  item         MenuItem                 @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  taxProfile   TaxProfile?              @relation(fields: [taxProfileId], references: [id], onDelete: SetNull)
+  translations MenuVariantTranslation[]
+  media        MediaAsset[]
+
+  @@index([itemId, sortOrder])
+  @@map("menu_variants")
+}
+
+model MenuVariantTranslation {
+  id        String @id @default(cuid())
+  variantId String
+  locale    String
+  name      String
+
+  variant MenuVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, locale])
+  @@map("menu_variant_translations")
+}
+
+model ModifierGroup {
+  id            String                @id @default(cuid())
+  itemId        String
+  slug          String
+  selectionType ModifierSelectionType @default(SINGLE)
+  minSelections Int                   @default(0)
+  maxSelections Int                   @default(1)
+  isRequired    Boolean               @default(false)
+  sortOrder     Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  item         MenuItem                   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  translations ModifierGroupTranslation[]
+  options      ModifierOption[]
+
+  @@unique([itemId, slug])
+  @@map("modifier_groups")
+}
+
+model ModifierGroupTranslation {
+  id      String @id @default(cuid())
+  groupId String
+  locale  String
+  title   String
+
+  group ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, locale])
+  @@map("modifier_group_translations")
+}
+
+model ModifierOption {
+  id             String   @id @default(cuid())
+  groupId        String
+  slug           String
+  priceDeltaCents Int     @default(0)
+  isAvailable    Boolean  @default(true)
+  isDefault      Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  group        ModifierGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  translations ModifierOptionTranslation[]
+
+  @@unique([groupId, slug])
+  @@map("modifier_options")
+}
+
+model ModifierOptionTranslation {
+  id       String @id @default(cuid())
+  optionId String
+  locale   String
+  name     String
+
+  option ModifierOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, locale])
+  @@map("modifier_option_translations")
+}
+
+// ---------------------------------------------------------------------------
+// Аллергены / добавки / dietary (структурировано, не свободный текст)
+// ---------------------------------------------------------------------------
+
+model Allergen {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  translations AllergenTranslation[]
+  items        MenuItemAllergen[]
+
+  @@map("allergens")
+}
+
+model AllergenTranslation {
+  id         String @id @default(cuid())
+  allergenId String
+  locale     String
+  name       String
+
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@unique([allergenId, locale])
+  @@map("allergen_translations")
+}
+
+model MenuItemAllergen {
+  itemId     String
+  allergenId String
+
+  item     MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, allergenId])
+  @@map("menu_item_allergens")
+}
+
+model Additive {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  translations AdditiveTranslation[]
+  items        MenuItemAdditive[]
+
+  @@map("additives")
+}
+
+model AdditiveTranslation {
+  id         String @id @default(cuid())
+  additiveId String
+  locale     String
+  name       String
+
+  additive Additive @relation(fields: [additiveId], references: [id], onDelete: Cascade)
+
+  @@unique([additiveId, locale])
+  @@map("additive_translations")
+}
+
+model MenuItemAdditive {
+  itemId     String
+  additiveId String
+
+  item     MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  additive Additive @relation(fields: [additiveId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, additiveId])
+  @@map("menu_item_additives")
+}
+
+model DietaryTag {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  translations DietaryTagTranslation[]
+  items        MenuItemDietaryTag[]
+
+  @@map("dietary_tags")
+}
+
+model DietaryTagTranslation {
+  id     String @id @default(cuid())
+  tagId  String
+  locale String
+  name   String
+
+  tag DietaryTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, locale])
+  @@map("dietary_tag_translations")
+}
+
+model MenuItemDietaryTag {
+  itemId String
+  tagId  String
+
+  item MenuItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tag  DietaryTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, tagId])
+  @@map("menu_item_dietary_tags")
+}
+
+// ---------------------------------------------------------------------------
+// Медиа (только metadata + URL; файлы — во внешнем object storage)
+// ---------------------------------------------------------------------------
+
+model MediaAsset {
+  id        String      @id @default(cuid())
+  itemId    String?
+  variantId String?
+  kind      MediaKind
+  status    MediaStatus @default(PROCESSING)
+  url       String
+  posterUrl String?
+  width     Int?
+  height    Int?
+  durationMs Int?
+  byteSize  Int?
+  mimeType  String?
+  altText   String?
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  item    MenuItem?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  variant MenuVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
+  @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------------
+// Персонал и RBAC
+// ---------------------------------------------------------------------------
+
+model StaffUser {
+  id            String          @id @default(cuid())
+  venueId       String
+  email         String          @unique
+  displayName   String
+  passwordHash  String
+  status        StaffUserStatus @default(ACTIVE)
+  totpEnabled   Boolean         @default(false)
+  failedLoginCount Int          @default(0)
+  lockedUntil   DateTime?
+  lastLoginAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  venue    Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  roles    StaffUserRole[]
+  sessions StaffSession[]
+
+  @@index([venueId, status])
+  @@map("staff_users")
+}
+
+/// Database-backed отзываемая сессия. В cookie — только tokenHash-совместимый
+/// селектор, сам секрет не хранится в открытом виде.
+model StaffSession {
+  id           String    @id @default(cuid())
+  staffUserId  String
+  tokenHash    String    @unique
+  issuedAt     DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  lastSeenAt   DateTime?
+  ipHash       String?
+  userAgent    String?
+
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@index([staffUserId, revokedAt])
+  @@map("staff_sessions")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  permissions RolePermission[]
+  staffUsers  StaffUserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model StaffUserRole {
+  staffUserId String
+  roleId      String
+  assignedAt  DateTime @default(now())
+  assignedBy  String?
+
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([staffUserId, roleId])
+  @@map("staff_user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Аудит (append-only: только create/read)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String         @id @default(cuid())
+  venueId     String?
+  actorType   AuditActorType @default(STAFF)
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  previousValue Json?
+  newValue    Json?
+  ipHash      String?
+  createdAt   DateTime       @default(now())
+
+  @@index([venueId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model LifecycleEvent {
+  id         String         @id @default(cuid())
+  entityType String
+  entityId   String
+  fromState  String?
+  toState    String
+  actorType  AuditActorType @default(SYSTEM)
+  actorId    String?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@map("lifecycle_events")
+}

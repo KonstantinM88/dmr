@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+
+/*
+ * DMR — дизайн-токены (Этап 1).
+ *
+ * Направление «Abendkarte»: тёмная основа, потому что карту читают в
+ * приглушённом свете зала с телефона в руке — светлый экран слепит соседей
+ * по столу. Акцент — латунь: материал ресторанного зала (поручни, лампы),
+ * а не абстрактный «брендовый» цвет.
+ */
+@theme {
+  --color-ink-950: #0f1311;
+  --color-ink-900: #171c19;
+  --color-ink-850: #1c2320;
+  --color-ink-800: #212824;
+  --color-ink-700: #2f3833;
+
+  --color-paper: #f3efe6;
+  --color-paper-dim: #b6b1a4;
+  --color-paper-faint: #7d786d;
+
+  --color-brass: #c79a45;
+  --color-brass-dim: #8a6b2e;
+
+  --color-sage: #86a08c;
+  --color-clay: #c0584a;
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink-950);
+    color: var(--color-paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * Signature-элемент карты: пунктирная линия от названия блюда к цене,
+   * как в наборной печатной Speisekarte. Цена — моноширинными цифрами,
+   * чтобы столбец выравнивался по разряду.
+   */
+  .price-rail {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .price-rail__leader {
+    flex: 1 1 auto;
+    height: 0;
+    border-bottom: 1px dotted var(--color-ink-700);
+    transform: translateY(-0.25rem);
+  }
+
+  .price-rail__value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9375rem;
+    color: var(--color-brass);
+    white-space: nowrap;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-paper-faint);
+  }
+}

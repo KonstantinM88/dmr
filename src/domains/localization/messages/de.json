@@ -1,0 +1,106 @@
+{
+  "common": {
+    "appName": "Speisekarte",
+    "loading": "Wird geladen …",
+    "retry": "Erneut versuchen",
+    "back": "Zurück",
+    "close": "Schließen",
+    "offline": "Keine Verbindung. Die Karte zeigt den zuletzt geladenen Stand.",
+    "errorTitle": "Das hat nicht geklappt",
+    "errorBody": "Bitte erneut versuchen. Bleibt der Fehler, wenden Sie sich an das Servicepersonal.",
+    "notFoundTitle": "Seite nicht gefunden",
+    "notFoundBody": "Diese Adresse gibt es nicht. Scannen Sie den QR-Code am Tisch erneut."
+  },
+  "menu": {
+    "title": "Speisekarte",
+    "subtitle": "Auswählen, zusammenstellen, bestellen",
+    "empty": "Für diese Karte sind noch keine Gerichte veröffentlicht.",
+    "categoryEmpty": "In dieser Kategorie ist derzeit nichts verfügbar.",
+    "soldOut": "Ausverkauft",
+    "available": "Verfügbar",
+    "from": "ab",
+    "priceLabel": "Preis",
+    "variants": "Größen",
+    "modifiers": "Extras",
+    "ingredients": "Zutaten",
+    "allergens": "Allergene",
+    "additives": "Zusatzstoffe",
+    "dietary": "Kennzeichnung",
+    "spice": "Schärfe",
+    "amount": "Menge",
+    "allergenDisclaimer": "Angaben ohne Gewähr auf Vollständigkeit. Bei Allergien oder Unverträglichkeiten fragen Sie bitte unser Servicepersonal.",
+    "videoPlay": "Video abspielen",
+    "videoPause": "Video anhalten",
+    "spiceLevel": {
+      "NONE": "nicht scharf",
+      "MILD": "leicht scharf",
+      "MEDIUM": "mittelscharf",
+      "HOT": "scharf"
+    }
+  },
+  "table": {
+    "label": "Tisch {label}",
+    "invalidToken": "Dieser QR-Code ist nicht mehr gültig",
+    "invalidTokenBody": "Bitte wenden Sie sich an das Servicepersonal, damit ein neuer Code am Tisch angebracht wird.",
+    "sessionClosed": "Die Tischsitzung ist abgeschlossen."
+  },
+  "cart": {
+    "title": "Ihre Auswahl",
+    "empty": "Noch nichts ausgewählt.",
+    "restored": "Ihre Auswahl wurde wiederhergestellt.",
+    "priceChanged": "Ein Preis hat sich geändert. Bitte prüfen Sie Ihre Auswahl.",
+    "notAvailableYet": "Bestellen ist ab Stufe 2 verfügbar."
+  },
+  "orderStatus": {
+    "submissionPending": "Bestellung wird gesendet …",
+    "awaitingWaiter": "Wartet auf Bestätigung durch den Service",
+    "accepted": "Bestätigt",
+    "partiallyAccepted": "Teilweise bestätigt",
+    "rejected": "Abgelehnt",
+    "preparing": "In Zubereitung",
+    "ready": "Fertig",
+    "served": "Serviert",
+    "reorderNeedsWaiter": "Nachbestellungen werden vom Service bestätigt.",
+    "reorderAutoAccept": "Nachbestellungen gehen direkt an Küche und Bar."
+  },
+  "payment": {
+    "pending": "Zahlung wird geprüft …",
+    "failed": "Zahlung fehlgeschlagen",
+    "succeeded": "Zahlung erfolgreich",
+    "partiallyPaid": "Teilweise bezahlt",
+    "paid": "Bezahlt",
+    "sessionClosed": "Tisch abgeschlossen",
+    "notAvailableYet": "Online-Zahlung ist ab Stufe 4 verfügbar."
+  },
+  "staff": {
+    "login": {
+      "title": "Anmeldung für Mitarbeitende",
+      "email": "E-Mail",
+      "password": "Passwort",
+      "submit": "Anmelden",
+      "submitting": "Wird angemeldet …",
+      "invalidCredentials": "E-Mail oder Passwort stimmt nicht.",
+      "locked": "Zu viele Versuche. Bitte später erneut anmelden.",
+      "rateLimited": "Zu viele Anfragen. Bitte kurz warten."
+    },
+    "logout": "Abmelden",
+    "signedInAs": "Angemeldet als {name}",
+    "noPermission": "Für diesen Bereich fehlt Ihnen die Berechtigung."
+  },
+  "admin": {
+    "title": "Verwaltung",
+    "menu": "Speisekarte",
+    "tables": "Tische und QR-Codes",
+    "staff": "Mitarbeitende",
+    "settings": "Einstellungen",
+    "categories": "Kategorien",
+    "items": "Gerichte",
+    "published": "Veröffentlicht",
+    "unpublished": "Nicht veröffentlicht",
+    "available": "Verfügbar",
+    "soldOut": "Ausverkauft",
+    "station": "Station",
+    "taxProfile": "Steuersatz",
+    "emptyMenu": "Es sind noch keine Kategorien angelegt."
+  }
+}

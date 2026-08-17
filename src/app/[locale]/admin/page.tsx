@@ -1,0 +1,47 @@
+import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { Link } from '@/i18n/navigation';
+import { requireStaff } from '@/domains/staff/server/rbac';
+import { ROLE_LABELS, type RoleCode } from '@/domains/staff/shared/permissions';
+
+export const dynamic = 'force-dynamic';
+
+export default async function AdminHomePage(props: { params: Promise<{ locale: string }> }) {
+  const { locale } = await props.params;
+  setRequestLocale(locale);
+
+  const principal = await requireStaff();
+  const t = await getTranslations('admin');
+
+  const sections = [
+    { href: '/admin/speisekarte', label: t('menu'), permission: 'MANAGE_MENU' as const },
+  ];
+
+  return (
+    <div className="pt-8">
+      <ul className="flex flex-wrap gap-2">
+        {principal.roles.map((role) => (
+          <li
+            key={role}
+            className="rounded-full bg-[var(--color-ink-850)] px-3 py-1 font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]"
+          >
+            {ROLE_LABELS[role as RoleCode] ?? role}
+          </li>
+        ))}
+      </ul>
+
+      <nav className="mt-8 grid gap-3 sm:grid-cols-2">
+        {sections
+          .filter((section) => principal.permissions.includes(section.permission))
+          .map((section) => (
+            <Link
+              key={section.href}
+              href={section.href}
+              className="rounded-[var(--radius-card)] border border-[var(--color-ink-800)] p-5 transition-colors hover:border-[var(--color-brass-dim)]"
+            >
+              <span className="font-[family-name:var(--font-display)] text-lg">{section.label}</span>
+            </Link>
+          ))}
+      </nav>
+    </div>
+  );
+}

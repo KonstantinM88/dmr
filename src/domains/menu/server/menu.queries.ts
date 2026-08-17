@@ -1,0 +1,192 @@
+import 'server-only';
+import { prisma } from '@/lib/prisma';
+import { defaultLocale } from '@/i18n/routing';
+import type {
+  MenuCategoryView,
+  MenuItemView,
+  MenuView,
+  ModifierGroupView,
+  MenuVariantView,
+} from '@/domains/menu/shared/types';
+
+/** Тег кэша публичного меню (docs/architecture.md §10). */
+export const MENU_CACHE_TAG = 'menu';
+
+export function menuCacheTagForVenue(venueSlug: string): string {
+  return `${MENU_CACHE_TAG}:${venueSlug}`;
+}
+
+type Translated = { locale: string };
+
+/**
+ * Выбор перевода с безопасным откатом на `de` (docs/localization.md §1):
+ * отсутствующий перевод не роняет страницу и не показывает ключ.
+ */
+function pickTranslation<T extends Translated>(
+  translations: T[],
+  locale: string,
+): T | undefined {
+  return (
+    translations.find((translation) => translation.locale === locale) ??
+    translations.find((translation) => translation.locale === defaultLocale) ??
+    translations[0]
+  );
+}
+
+/**
+ * Публичное меню заведения на заданной локали.
+ * Возвращает только опубликованные категории и позиции; недоступные позиции
+ * остаются в выдаче, но помечены isAvailable=false («Ausverkauft»).
+ */
+export async function getPublishedMenu(venueSlug: string, locale: string): Promise<MenuView | null> {
+  const venue = await prisma.venue.findUnique({
+    where: { slug: venueSlug },
+    select: { id: true, name: true, currency: true },
+  });
+
+  if (!venue) return null;
+
+  const categories = await prisma.menuCategory.findMany({
+    where: { venue: { slug: venueSlug }, isPublished: true },
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      translations: true,
+      items: {
+        where: { isPublished: true },
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          translations: true,
+          variants: {
+            orderBy: { sortOrder: 'asc' },
+            include: { translations: true },
+          },
+          modifierGroups: {
+            orderBy: { sortOrder: 'asc' },
+            include: {
+              translations: true,
+              options: { orderBy: { sortOrder: 'asc' }, include: { translations: true } },
+            },
+          },
+          media: { where: { status: 'READY' }, orderBy: { sortOrder: 'asc' } },
+          allergens: { include: { allergen: { include: { translations: true } } } },
+          additives: { include: { additive: { include: { translations: true } } } },
+          dietaryTags: { include: { tag: { include: { translations: true } } } },
+        },
+      },
+    },
+  });
+
+  const categoryViews: MenuCategoryView[] = categories.map((category) => {
+    const categoryTranslation = pickTranslation(category.translations, locale);
+
+    const items: MenuItemView[] = category.items.map((item) => {
+      const itemTranslation = pickTranslation(item.translations, locale);
+
+      const variants: MenuVariantView[] = item.variants.map((variant) => ({
+        id: variant.id,
+        name: pickTranslation(variant.translations, locale)?.name ?? '',
+        priceCents: variant.priceCents,
+        amountValue: variant.amountValue,
+        amountUnit: variant.amountUnit,
+        isDefault: variant.isDefault,
+        isAvailable: variant.isAvailable,
+      }));
+
+      const modifierGroups: ModifierGroupView[] = item.modifierGroups.map((group) => ({
+        id: group.id,
+        title: pickTranslation(group.translations, locale)?.title ?? '',
+        selectionType: group.selectionType,
+        minSelections: group.minSelections,
+        maxSelections: group.maxSelections,
+        isRequired: group.isRequired,
+        options: group.options.map((option) => ({
+          id: option.id,
+          name: pickTranslation(option.translations, locale)?.name ?? '',
+          priceDeltaCents: option.priceDeltaCents,
+          isDefault: option.isDefault,
+          isAvailable: option.isAvailable,
+        })),
+      }));
+
+      return {
+        id: item.id,
+        slug: item.slug,
+        name: itemTranslation?.name ?? item.slug,
+        shortDescription: itemTranslation?.shortDescription ?? null,
+        fullDescription: itemTranslation?.fullDescription ?? null,
+        ingredients: itemTranslation?.ingredients ?? null,
+        basePriceCents: item.basePriceCents,
+        isAvailable: item.isAvailable,
+        spiceLevel: item.spiceLevel,
+        allergens: item.allergens
+          .map((link) => pickTranslation(link.allergen.translations, locale)?.name ?? link.allergen.code)
+          .sort((a, b) => a.localeCompare(b, locale)),
+        additives: item.additives.map(
+          (link) => pickTranslation(link.additive.translations, locale)?.name ?? link.additive.code,
+        ),
+        dietaryTags: item.dietaryTags.map(
+          (link) => pickTranslation(link.tag.translations, locale)?.name ?? link.tag.code,
+        ),
+        variants,
+        modifierGroups,
+        media: item.media.map((asset) => ({
+          id: asset.id,
+          kind: asset.kind,
+          url: asset.url,
+          posterUrl: asset.posterUrl,
+          altText: asset.altText,
+          width: asset.width,
+          height: asset.height,
+        })),
+      };
+    });
+
+    return {
+      id: category.id,
+      slug: category.slug,
+      title: categoryTranslation?.title ?? category.slug,
+      description: categoryTranslation?.description ?? null,
+      items,
+    };
+  });
+
+  return {
+    venueId: venue.id,
+    venueName: venue.name,
+    currency: venue.currency,
+    locale,
+    categories: categoryViews,
+  };
+}
+
+/** Сводка меню для admin-панели: без переводов вариантов и медиа. */
+export async function getMenuOverview(venueSlug: string, locale: string) {
+  const categories = await prisma.menuCategory.findMany({
+    where: { venue: { slug: venueSlug } },
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      translations: true,
+      items: {
+        orderBy: { sortOrder: 'asc' },
+        include: { translations: true, station: true, taxProfile: true },
+      },
+    },
+  });
+
+  return categories.map((category) => ({
+    id: category.id,
+    slug: category.slug,
+    title: pickTranslation(category.translations, locale)?.title ?? category.slug,
+    isPublished: category.isPublished,
+    items: category.items.map((item) => ({
+      id: item.id,
+      slug: item.slug,
+      name: pickTranslation(item.translations, locale)?.name ?? item.slug,
+      basePriceCents: item.basePriceCents,
+      isPublished: item.isPublished,
+      isAvailable: item.isAvailable,
+      stationName: item.station?.name ?? null,
+      taxRateBasisPoints: item.taxProfile?.rateBasisPoints ?? null,
+    })),
+  }));
+}
