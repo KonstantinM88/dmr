@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { MenuItemView } from '@/domains/menu/shared/types';
+import { AddToCartControls } from '@/components/menu/AddToCartControls';
 import { displayPriceCents, hasMultiplePrices } from '@/domains/menu/shared/types';
 import { formatCents } from '@/lib/money';
 
@@ -10,6 +11,8 @@ type Props = {
   item: MenuItemView;
   locale: string;
   currency: string;
+  /** false, пока сессия стола не принимает заказы (оплата/закрытие). */
+  canOrder: boolean;
 };
 
 /**
@@ -19,7 +22,7 @@ type Props = {
  * viewport воспроизведение останавливается (IntersectionObserver);
  * при prefers-reduced-motion автозапуск не предлагается вовсе.
  */
-export function MenuItemCard({ item, locale, currency }: Props) {
+export function MenuItemCard({ item, locale, currency, canOrder }: Props) {
   const t = useTranslations('menu');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLElement | null>(null);
@@ -191,6 +194,10 @@ export function MenuItemCard({ item, locale, currency }: Props) {
                 </div>
               )}
             </>
+          )}
+
+          {canOrder && (
+            <AddToCartControls item={item} locale={locale} currency={currency} />
           )}
         </div>
       </div>

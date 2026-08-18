@@ -42,14 +42,25 @@
     "label": "Tisch {label}",
     "invalidToken": "Dieser QR-Code ist nicht mehr gültig",
     "invalidTokenBody": "Bitte wenden Sie sich an das Servicepersonal, damit ein neuer Code am Tisch angebracht wird.",
-    "sessionClosed": "Die Tischsitzung ist abgeschlossen."
+    "sessionClosed": "Die Tischsitzung ist abgeschlossen.",
+    "scanRequired": "Bitte scannen Sie den QR-Code an Ihrem Tisch, um zu bestellen."
   },
   "cart": {
     "title": "Ihre Auswahl",
     "empty": "Noch nichts ausgewählt.",
     "restored": "Ihre Auswahl wurde wiederhergestellt.",
     "priceChanged": "Ein Preis hat sich geändert. Bitte prüfen Sie Ihre Auswahl.",
-    "notAvailableYet": "Bestellen ist ab Stufe 2 verfügbar."
+    "notAvailableYet": "Bestellen ist ab Stufe 2 verfügbar.",
+    "add": "Hinzufügen",
+    "added": "Hinzugefügt",
+    "submit": "Bestellen",
+    "submitFailed": "Die Bestellung konnte nicht gesendet werden. Bitte erneut versuchen.",
+    "itemUnavailable": "Ein Gericht ist nicht mehr verfügbar. Bitte Auswahl prüfen.",
+    "tooManyRequests": "Zu viele Bestellungen in kurzer Zeit. Bitte kurz warten.",
+    "lineCount": "{count, plural, one {# Position} other {# Positionen}}",
+    "increase": "Menge erhöhen",
+    "decrease": "Menge verringern",
+    "remove": "Entfernen"
   },
   "orderStatus": {
     "submissionPending": "Bestellung wird gesendet …",
@@ -61,7 +72,12 @@
     "ready": "Fertig",
     "served": "Serviert",
     "reorderNeedsWaiter": "Nachbestellungen werden vom Service bestätigt.",
-    "reorderAutoAccept": "Nachbestellungen gehen direkt an Küche und Bar."
+    "reorderAutoAccept": "Nachbestellungen gehen direkt an Küche und Bar.",
+    "sectionTitle": "Ihre Bestellungen",
+    "roundLabel": "Bestellung {sequence}",
+    "createdByStaff": "vom Service aufgenommen",
+    "cancelled": "Storniert",
+    "blockedByPayment": "Während der Zahlung sind keine neuen Bestellungen möglich."
   },
   "payment": {
     "pending": "Zahlung wird geprüft …",
@@ -101,6 +117,96 @@
     "soldOut": "Ausverkauft",
     "station": "Station",
     "taxProfile": "Steuersatz",
-    "emptyMenu": "Es sind noch keine Kategorien angelegt."
+    "emptyMenu": "Es sind noch keine Kategorien angelegt.",
+    "service": "Tische bedienen",
+    "kitchen": "Küchenanzeige",
+    "bar": "Baranzeige",
+    "markSoldOut": "Als ausverkauft markieren",
+    "markAvailable": "Wieder verfügbar",
+    "availabilityUpdating": "Wird aktualisiert …",
+    "availabilityFailed": "Die Verfügbarkeit konnte nicht geändert werden."
+  },
+  "service": {
+    "title": "Tische",
+    "activeSessions": "Offene Tische",
+    "noActiveSessions": "Derzeit ist kein Tisch geöffnet.",
+    "freeTables": "Freie Tische",
+    "noFreeTables": "Alle Tische sind belegt.",
+    "table": "Tisch {label}",
+    "pendingRounds": "{count, plural, one {# Bestellung offen} other {# Bestellungen offen}}",
+    "participants": "{count, plural, one {# Gerät} other {# Geräte}}",
+    "autoAcceptOn": "Nachbestellungen automatisch",
+    "sessionStatus": "Status",
+    "rounds": "Bestellungen",
+    "noRounds": "Für diesen Tisch liegt noch keine Bestellung vor.",
+    "firstRound": "Erstbestellung",
+    "acceptAll": "Alles bestätigen",
+    "acceptSelected": "Auswahl bestätigen",
+    "rejectAll": "Alles ablehnen",
+    "rejectionNote": "Notiz zur Ablehnung (optional)",
+    "decisionFailed": "Die Entscheidung konnte nicht gespeichert werden.",
+    "markServed": "Serviert",
+    "modeRequireWaiter": "Nachbestellungen werden vom Service bestätigt.",
+    "modeAutoAccept": "Nachbestellungen gehen direkt an Küche und Bar.",
+    "modeHint": "Gilt nur für diese Tischsitzung und wird beim Abschluss zurückgesetzt.",
+    "enableAutoAccept": "Automatisch bestätigen",
+    "enableRequireWaiter": "Bestätigung durch Service",
+    "modeChangeForbidden": "In diesem Status ist die Umstellung nicht möglich.",
+    "manualOrder": "Bestellung aufnehmen",
+    "manualOrderPick": "Gericht wählen",
+    "manualOrderAdd": "Hinzufügen",
+    "manualOrderSubmit": "Bestellung aufgeben",
+    "manualOrderFailed": "Die Bestellung konnte nicht aufgenommen werden."
+  },
+  "production": {
+    "title": "Produktion",
+    "navigation": "Produktionsbereiche",
+    "service": "Service",
+    "kitchen": "Küche",
+    "bar": "Bar",
+    "empty": "Derzeit sind keine offenen Tickets vorhanden.",
+    "ticketCount": "{count, plural, one {# offenes Ticket} other {# offene Tickets}}",
+    "tableRound": "Tisch {table} · Bestellung {round}",
+    "connectionLive": "Live-Aktualisierung aktiv",
+    "connectionOffline": "Offline — letzter Stand wird angezeigt",
+    "connectionReconnecting": "Verbindung wird wiederhergestellt …",
+    "updating": "Wird aktualisiert …",
+    "waitingForService": "Fertig · wartet auf den Service",
+    "statuses": {
+      "QUEUED": "Neu",
+      "ACCEPTED": "Angenommen",
+      "IN_PROGRESS": "In Zubereitung",
+      "READY": "Fertig",
+      "HANDED_OFF": "Ausgegeben",
+      "CANCELLED": "Storniert"
+    },
+    "actions": {
+      "ACCEPTED": "Annehmen",
+      "IN_PROGRESS": "Zubereitung starten",
+      "READY": "Als fertig markieren",
+      "CANCELLED": "Stornieren"
+    },
+    "errors": {
+      "not_found": "Das Ticket wurde nicht gefunden.",
+      "wrong_station": "Dieses Ticket gehört zu einer anderen Station.",
+      "invalid_transition": "Dieser Statuswechsel ist nicht mehr möglich."
+    }
+  },
+  "tables": {
+    "title": "Tische und QR-Codes",
+    "intro": "Neue QR-Adressen werden nur einmal angezeigt. Beim Rotieren wird der bisherige Code sofort ungültig.",
+    "newTableLabel": "Tischbezeichnung",
+    "create": "Anlegen",
+    "duplicateLabel": "Diese Bezeichnung ist bereits vergeben.",
+    "failed": "Die Aktion ist fehlgeschlagen.",
+    "newQrFor": "Neue QR-Adresse für Tisch {label}",
+    "showOnce": "Jetzt drucken oder notieren — die Adresse wird nicht erneut angezeigt.",
+    "hide": "Ausblenden",
+    "inactive": "Inaktiv",
+    "noActiveToken": "Kein gültiger QR-Code",
+    "tokenHistory": "{count, plural, one {# ausgegebener Code} other {# ausgegebene Codes}}",
+    "rotate": "Neuen Code",
+    "activate": "Aktivieren",
+    "deactivate": "Deaktivieren"
   }
 }

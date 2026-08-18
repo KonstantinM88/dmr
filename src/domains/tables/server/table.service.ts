@@ -38,6 +38,33 @@ export async function resolveTableByToken(token: string): Promise<ResolvedTable 
 }
 
 /**
+ * Возвращает действующий QR-токен только для локального dev-входа.
+ * Двойной NODE_ENV guard не позволяет случайно использовать helper в production.
+ * Токен должен оставаться внутри server-only redirect flow и не передаваться в UI.
+ */
+export async function getActiveTableTokenForDevelopment(
+  venueSlug: string,
+  tableLabel: string,
+): Promise<string | null> {
+  if (process.env.NODE_ENV !== 'development') return null;
+
+  const record = await prisma.tableQrToken.findFirst({
+    where: {
+      revokedAt: null,
+      table: {
+        label: tableLabel,
+        isActive: true,
+        venue: { slug: venueSlug },
+      },
+    },
+    orderBy: { issuedAt: 'desc' },
+    select: { token: true },
+  });
+
+  return record?.token ?? null;
+}
+
+/**
  * Ротация QR-токена стола: старый отзывается, новый выпускается в одной
  * транзакции. Сам стол не пересоздаётся.
  */
@@ -66,6 +93,102 @@ export async function rotateTableToken(
   });
 
   return token;
+}
+
+/** Создание стола. Первый QR-токен выпускается сразу. */
+export async function createTable(
+  input: { venueId: string; label: string; seats?: number | null },
+  actor: { staffUserId: string; ip?: string },
+): Promise<{ ok: true; tableId: string; token: string } | { ok: false; reason: 'duplicate_label' }> {
+  const existing = await prisma.diningTable.findFirst({
+    where: { venueId: input.venueId, label: input.label },
+    select: { id: true },
+  });
+
+  if (existing) return { ok: false, reason: 'duplicate_label' };
+
+  const token = generateOpaqueToken(24);
+  const maxSortOrder = await prisma.diningTable.aggregate({
+    where: { venueId: input.venueId },
+    _max: { sortOrder: true },
+  });
+
+  const table = await prisma.$transaction(async (tx) => {
+    const created = await tx.diningTable.create({
+      data: {
+        venueId: input.venueId,
+        label: input.label,
+        seats: input.seats ?? null,
+        sortOrder: (maxSortOrder._max.sortOrder ?? 0) + 1,
+      },
+      select: { id: true },
+    });
+    await tx.tableQrToken.create({ data: { tableId: created.id, token } });
+    return created;
+  });
+
+  await recordAuditLog({
+    venueId: input.venueId,
+    actorType: 'STAFF',
+    actorId: actor.staffUserId,
+    action: 'TABLE_CREATED',
+    entityType: 'DiningTable',
+    entityId: table.id,
+    newValue: { label: input.label },
+    ip: actor.ip,
+  });
+
+  return { ok: true, tableId: table.id, token };
+}
+
+/** Включение/выключение стола. Стол не удаляется: у него есть история заказов. */
+export async function setTableActive(
+  tableId: string,
+  isActive: boolean,
+  actor: { staffUserId: string; venueId: string; ip?: string },
+): Promise<void> {
+  await prisma.diningTable.update({ where: { id: tableId }, data: { isActive } });
+
+  await recordAuditLog({
+    venueId: actor.venueId,
+    actorType: 'STAFF',
+    actorId: actor.staffUserId,
+    action: isActive ? 'TABLE_ACTIVATED' : 'TABLE_DEACTIVATED',
+    entityType: 'DiningTable',
+    entityId: tableId,
+    ip: actor.ip,
+  });
+}
+
+/** Список столов для админки. Сами токены наружу не отдаются. */
+export async function listTables(venueSlug: string) {
+  const tables = await prisma.diningTable.findMany({
+    where: { venue: { slug: venueSlug } },
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      _count: { select: { qrTokens: true } },
+      qrTokens: { where: { revokedAt: null }, select: { id: true, issuedAt: true } },
+    },
+  });
+
+  return tables.map((table) => ({
+    id: table.id,
+    label: table.label,
+    seats: table.seats,
+    isActive: table.isActive,
+    hasActiveToken: table.qrTokens.length > 0,
+    issuedAt: table.qrTokens[0]?.issuedAt.toISOString() ?? null,
+    tokenHistoryCount: table._count.qrTokens,
+  }));
+}
+
+/** Минимальный список активных столов для service board. */
+export async function listActiveTablesForService(venueSlug: string) {
+  return prisma.diningTable.findMany({
+    where: { venue: { slug: venueSlug }, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, label: true },
+  });
 }
 
 /** Абсолютный URL для печати QR-кода стола. */

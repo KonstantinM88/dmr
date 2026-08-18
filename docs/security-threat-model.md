@@ -29,6 +29,9 @@
 | MIME sniffing на отдаваемых файлах | `Content-Type`/`X-Content-Type-Options: nosniff` на media-раздаче через storage/CDN |
 | Утечка секретов в client bundle | Секреты только в server-only модулях/env, явный lint-guard на импорт server-only в client-компоненты |
 | Утечка секретов в логах | Маскирование/исключение Stripe secrets, session tokens, полных cookie, паролей, платёжных данных из structured logging |
+| Случайная публикация локального QR-helper | `/api/dev/qr-entry` имеет двойной `NODE_ENV === 'development'` guard (route + server-only domain service), в production отвечает `404`, не отдаёт токен в HTML/JSON и перенаправляет только на фиксированный внутренний `/t/[token]` |
+| Доступ кухни к бару или бара к кухне | Queue GET и transition server action независимо требуют staff session, `MANAGE_PRODUCTION_TICKET` и station-specific `VIEW_KITCHEN_QUEUE`/`VIEW_BAR_QUEUE`; domain service повторно сверяет `venueId` и `station.kind` тикета |
+| Утечка realtime-данных через кэш | Все polling endpoints отвечают `private, no-store`; guest feed разрешает стол только по HttpOnly QR-cookie, staff feeds — только по revocable staff session |
 | Избыточный сбор персональных данных | GDPR data minimization: гость не обязан давать email/телефон/имя, если это не требуется выбранным способом оплаты |
 | Отсутствие retention-политики | Явная retention policy для `SessionParticipant`/логов, задокументирована перед production |
 

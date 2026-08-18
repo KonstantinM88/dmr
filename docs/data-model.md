@@ -1,8 +1,8 @@
-# DMR — Data Model (Этап 0, концептуальный уровень)
+# DMR — Data Model (актуально на Этап 3)
 
-Это описание сущностей и связей, а не готовый `schema.prisma` — конкретные
-типы полей/индексы фиксируются в Этапе 1-2 при реализации, здесь —
-архитектурный контракт, обязательный к соблюдению.
+Архитектурный контракт сущностей и связей. Для уже реализованных Этапов 1–3
+точные типы и индексы определяют `prisma/schema.prisma` и
+`prisma/migrations`; будущие сущности Этапов 3+ ниже остаются концептуальными.
 
 ## 1. Venue / инфраструктура ресторана
 
@@ -21,11 +21,15 @@
 - **DiningSession** — одно посещение стола: `tableId`, статус (см.
   `order-state-machines.md`), `reorderApprovalMode`
   (`REQUIRE_WAITER`/`AUTO_ACCEPT`, default `REQUIRE_WAITER`, сбрасывается
-  при закрытии), `openedAt`, `closedAt`.
+  при закрытии), `openedAt`, `closedAt`, optional staff actor открытия и
+  закрытия. Первый гостевой заказ за свободным активным столом может открыть
+  сессию автоматически. Partial unique index
+  `dining_sessions_active_per_table` гарантирует не более одной сессии не в
+  `CLOSED/CANCELLED` на стол.
 - **SessionParticipant** (= анонимный Guest/Device) — `sessionId`,
-  device-scoped session token (HttpOnly), без персональных данных если не
-  требуется способом оплаты; связь используется для «мои позиции», не
-  единственный источник истины для владения позицией.
+  device-scoped secret в HttpOnly-cookie, в БД только `tokenHash`, optional
+  `displayLabel`/`seatLabel`, без персональных данных; связь используется для
+  «мои позиции», не единственный источник истины для владения позицией.
 
 ## 3. Меню (translation-first, НЕ nameDe/nameEn/nameRu-поля)
 
@@ -51,20 +55,30 @@
 ## 4. Заказы
 
 - **OrderRound** — один «раунд» отправки (первый заказ или дозаказ):
-  `sessionId`, статус (см. state machines), `approvalMode` snapshot на
-  момент создания, `clientRequestId` (идемпотентность), `createdByParticipantId`.
+  `sessionId`, последовательный `sequence`, статус (см. state machines),
+  `approvalMode` snapshot на момент создания, `isFirstRound`,
+  `clientRequestId` (идемпотентность уникальна внутри session), guest/staff
+  actor, `totalGrossCents`, timestamps submit/decision.
 - **OrderItem** — позиция раунда: `orderedByParticipantId`, `seatLabel?`,
   immutable product snapshot (название/вариант/модификаторы/цена/налог на
-  момент заказа), `quantity`, `unitPrice`, `lineTotal`, `station`,
-  `allocatedPaidAmount`, `remainingAmount`, статус (см. state machines).
+  момент заказа), `quantity`, `unitPriceCents`, `lineTotalCents`, station и
+  station-kind snapshots, `allocatedPaidCents`, `remainingCents`, статус и
+  optional причина отказа (см. state machines).
 - **OrderItemModifier** — snapshot выбранных модификаторов + их цена на
   момент заказа.
+- **OrderRoundDecision** — append-only решение сотрудника: итоговый status,
+  массивы принятых/отклонённых item ids, optional note, staff actor и время.
 
 ## 5. Производство
 
 - **ProductionStation** — `KITCHEN`/`BAR`/`OTHER`, привязана к Venue.
-- **ProductionTicket** — `orderItemId`, `stationId`, статус (см. state
-  machines), таймстемпы переходов.
+- **ProductionTicket** — ровно один на принятую `OrderItem` со станцией
+  (`orderItemId` unique), `stationId`, статус (см. state machines),
+  `queuedAt/acceptedAt/startedAt/readyAt/handedOffAt/cancelledAt` и
+  `updatedAt` как cursor polling. Создаётся в той же транзакции, в которой
+  позиция становится `ACCEPTED`; уникальность делает маршрутизацию
+  идемпотентной. Исторические позиции Этапа 2 backfill-ятся миграцией с
+  сохранением фактического состояния.
 
 ## 6. Финансы (разделено, НЕ `paid: boolean`)
 

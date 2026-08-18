@@ -54,6 +54,8 @@ patch-релизы в разрешённых ветках), подготовка
 
 ## Этап 1 — Фундамент и публичное меню
 
+**Статус: выполнено и локально проверено 2026-08-18.**
+
 Next.js project (App Router, TS strict), Prisma/PostgreSQL (Neon pooled
 runtime + direct migration connection), migrations, seed, дизайн-токены,
 locale infrastructure (next-intl, de default), staff authentication,
@@ -64,18 +66,39 @@ translation-fallback.
 
 ## Этап 2 — Столы и заказы
 
+**Статус: выполнено и локально проверено 2026-08-18.**
+
 `DiningTable`/`TableQrToken` (генерация, отзыв, ротация), `DiningSession`,
 `SessionParticipant`, корзины по устройству, первый заказ (`OrderRound`,
 идемпотентность), подтверждение официантом, `reorderApprovalMode`, ручной
 заказ официанта, аудит, гостевые статусы. Проверки: unit-тесты state
 machines, идемпотентность/duplicate-submit, authorization matrix.
 
+Фактическое решение Этапа 2: первый гостевой заказ за свободным активным
+столом автоматически открывает `DiningSession`; первый раунд всегда требует
+решения официанта. На момент завершения Этапа 2 `ProductionTicket` ещё не
+создавался; его добавила отдельная миграция Этапа 3.
+
 ## Этап 3 — Производственные очереди
 
-Waiter dashboard, kitchen display, bar display, `ProductionTicket`, SSE
-(если подтверждено Этапом 0/1) + polling fallback, reconnect, ready/
-served flow, sold-out обновления в реальном времени. Проверки: нагрузочный
-smoke на несколько параллельных клиентов, reconnect-тест.
+**Статус: выполнено и локально проверено 2026-08-18.**
+
+Добавлены `ProductionTicket` и отдельные экраны кухни/бара, station- и
+venue-scoped RBAC, последовательность `QUEUED → ACCEPTED → IN_PROGRESS →
+READY → HANDED_OFF`, синхронизация статусов позиции/раунда и waiter
+ready/served flow. Принятые позиции создают тикеты идемпотентно в той же
+транзакции, а миграция безопасно перенесла уже существующие позиции Этапа 2.
+
+Realtime реализован как cursor-based polling с reconnect/offline состоянием:
+3/10 секунд для production, 4/15 для service, 8/15 для guest. SSE оставлен
+альтернативой до измерения на реальном Hostinger. Sold-out toggle в admin
+обновляет публичное меню через guest change feed.
+
+Проверки: `lint`, `typecheck`, production `build`, 221 unit-тест, migration
+status и backfill-инварианты, QR-cookie/authorization HTTP smoke, 20
+параллельных guest polling-клиентов. Визуальный проход авторизованных экранов
+кухни/бара остаётся ручным, потому что автоматизированный браузер в текущей
+сессии не был подключён.
 
 ## Этап 4 — MVP оплаты
 

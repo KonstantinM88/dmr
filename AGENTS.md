@@ -41,6 +41,21 @@ Claude Code / Codex и других агентов. Перед существе�
   готова к `en`/`ru`/другим с первого дня.
 - При ответах владельцу проекта — русский язык.
 
+## Формат отчёта владельцу после изменений
+
+После каждого обновления проекта финальный ответ обязательно содержит:
+
+1. **Что изменено** — краткий список фактически изменённых функций, файлов
+   или поведения без лишнего технического шума.
+2. **Что проверить** — конкретные страницы, кнопки и сценарии для ручной
+   проверки владельцем, а также результат уже выполненных автоматических
+   проверок. Если ручная проверка не нужна, написать это явно.
+3. **Рекомендация следующего шага** — один приоритетный следующий шаг и,
+   при необходимости, решения или данные, которые требуются от владельца.
+
+Не выдавать запланированное за выполненное. Отдельно отмечать известные
+ограничения, пропущенные проверки и блокеры.
+
 ## Источники истины
 
 1. `package.json` — версии, scripts, зависимости.
@@ -57,7 +72,8 @@ Claude Code / Codex и других агентов. Перед существе�
 
 ## Текущее состояние установки (2026-08-18)
 
-- Этап 1 установлен локально в `D:\projects\dmr`; Этап 2 НЕ начат.
+- Этапы 1–3 установлены и локально проверены в `D:\projects\dmr`; Этап 4
+  не начинать без отдельной явной команды владельца.
 - Node.js при последней проверке: `v22.14.0`, требование проекта — `>=22`.
 - Зависимости установлены, `package-lock.json` создан, Prisma Client
   сгенерирован в игнорируемый `src/generated/prisma`.
@@ -65,14 +81,21 @@ Claude Code / Codex и других агентов. Перед существе�
   выключен: DMR использует собственные `StaffUser`, `StaffSession`, RBAC,
   rate limiting и password hashing. Не подключать Neon Auth без отдельного
   решения о полной замене существующей модели аутентификации.
-- Применена миграция
-  `prisma/migrations/20260817222350_stage1_foundation/migration.sql`; на дату
-  записи `prisma migrate status` сообщает `Database schema is up to date`.
+- Применены миграции `20260817222350_stage1_foundation`,
+  `20260817233152_stage2_sessions_orders` и
+  `20260818004303_stage3_production_queues`; Stage 2 migration содержит
+  обязательный partial unique index `dining_sessions_active_per_table`,
+  Stage 3 — `ProductionTicket` и безопасный backfill существующих позиций.
+  На дату записи Prisma сообщает `Database schema is up to date`.
 - Сид выполнен: 1 Venue, 8 DiningTable, 8 активных TableQrToken, 9 MenuItem,
-  1 StaffUser-владелец, 6 ролей. Сид идемпотентный.
+  1 StaffUser-владелец, 6 ролей. Сид идемпотентный и после Stage 2 повторно
+  не запускался. Новые session/order tables изначально пусты.
+- Тестовая сессия Tisch 1 после Stage 3: четыре production ticket без дублей;
+  три ранее поданные позиции backfill-перенесены в `HANDED_OFF`, одна ещё не
+  поданная позиция — в `QUEUED`. Не менять эти данные без тестовой причины.
 - Последняя полная проверка успешна: ESLint, TypeScript, production build,
-  169 unit-тестов, `/api/health`, `/api/ready`, публичное меню, QR-cookie и
-  редирект неавторизованного `/de/admin` на `/de/anmelden`.
+  221 unit-тест, migration/backfill-инварианты, `/api/health`, `/api/ready`,
+  QR-cookie, authorization/cursor HTTP smoke и 20 параллельных guest polls.
 - Не считать dev-сервер работающим между сессиями. Всегда проверять порт и
   `/api/health`; PID — временное значение и в документацию не записывается.
 
@@ -113,10 +136,14 @@ API routes / server components, отдающие client-safe типы. С Эта
 Фактически создано на Этапе 1: `src/app` (`[locale]` guest + admin,
 `t/[token]`, `api/health`, `api/ready`), `src/domains/{menu,tables,staff,
 media,audit,localization}`, `src/lib`, `src/components`, `prisma`, `tests`.
-Домены `sessions`, `orders`, `production`, `billing`, `payments`,
-`notifications` появятся на своих этапах.
+На Этапе 2 добавлены `domains/{sessions,orders}`, guest cart/order actions,
+service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
+`/[locale]/admin/tische` и 40 unit-тестов. На Этапе 3 добавлены
+`domains/{production,realtime}`, `/[locale]/produktion/{kueche,bar}`,
+`/api/production/queue`, `/api/live/{guest,service}` и sold-out action.
+Домены `billing`, `payments`, `notifications` появятся на своих этапах.
 
-## Решения, принятые на Этапе 1 (не пересматривать без миграции)
+## Решения, принятые на Этапах 1–3 (не пересматривать без миграции)
 
 - Деньги — целые minor units (евроценты), поля `*Cents` типа `Int`,
   валюта EUR. Реализация и тесты: `src/lib/money.ts`, `tests/unit/money.test.ts`.
@@ -135,6 +162,27 @@ media,audit,localization}`, `src/lib`, `src/components`, `prisma`, `tests`.
   `middleware.ts` в `proxy.ts`); `/t/:token` и `/api/*` из неё исключены.
 - Slug единственного заведения — константа `DEFAULT_VENUE_SLUG`
   в `src/lib/venue.ts`, а не литерал в запросах.
+- Первый гостевой заказ за свободным активным столом автоматически открывает
+  `DiningSession` (`actorType=GUEST`). Первый раунд всё равно всегда
+  `SUBMITTED` и требует решения официанта, даже при `AUTO_ACCEPT`.
+- `reorderApprovalMode` — snapshot на OrderRound; переключение влияет только
+  на будущие дозаказы и каждое изменение аудируется.
+- Stage 3 заменил временный direct-serve: принятая позиция со станцией получает
+  ровно один `ProductionTicket`; кухня/бар проводят его через `QUEUED →
+  ACCEPTED → IN_PROGRESS → READY`, а официант проводит `READY → HANDED_OFF`
+  вместе с `OrderItem READY → SERVED` в одной транзакции.
+- Переходы тикета защищены optimistic concurrency (`updateMany` с исходным
+  status); повторное/одновременное действие возвращает invalid transition и
+  не создаёт повторный lifecycle event.
+- Realtime Этапа 3 — polling по DB-time cursor: production 3/10 секунд,
+  service 4/15, guest 8/15. Terminal tickets приходят как tombstones; reconnect
+  сохраняет snapshot. SSE не включать до измерения на реальном Hostinger,
+  контракт — `docs/realtime-contract.md`.
+- Оперативный sold-out меняет `MenuItem.isAvailable`, аудируется и доходит до
+  гостя через change feed; сервер заказа всё равно повторно проверяет наличие.
+- Не более одной незавершённой DiningSession на стол гарантируют и
+  transactional check, и partial unique index в migration SQL. Prisma schema
+  сам этот partial index не описывает — не потерять его при новых миграциях.
 
 ## Env contract (имена без значений, см. `docs/hostinger-deployment.md`)
 
@@ -263,6 +311,11 @@ npm run db:studio
   `status=ready,database=up`; `/de` → 200; `/de/anmelden` → 200;
   неавторизованный `/de/admin` → redirect на `/de/anmelden`; валидный
   `/t/<token>` → cookie `dmr_table_token`, redirect `/de`, бейдж `Tisch N`.
+- Stage 3 smoke: без staff-cookie `/api/production/queue?kind=KITCHEN` и
+  `/api/live/service` → 401; invalid realtime cursor → 400; с owner-session
+  `/de/produktion/kueche` показывает текущий `QUEUED` тикет, а
+  `/de/produktion/bar` — отдельную очередь. Для production delta проверять
+  full snapshot, затем cursor delta и удаление `HANDED_OFF` tombstone.
 - При HTTP-автоматизации проверять QR в два шага (ответ 307/Set-Cookie, затем
   `/de` с той же cookie session): некоторые клиенты теряют cookie при
   автоматическом redirect и дают ложный отрицательный результат.
@@ -285,8 +338,8 @@ npm run db:studio
 - Neon plan/лимиты соединений — уточнить до нагрузочных решений.
 - Интеграция с сайтом Waldschlösschen — по умолчанию отсутствует.
 - Одно заведение — текущий default; multi-venue не добавлять без решения.
-- SSE/polling на Hostinger — выбирать только после измерения на реальном
-  хостинге.
+- Сейчас выбран polling. SSE можно включить только после измерения на реальном
+  Hostinger в Этапе 6; не считать localhost-smoke достаточным.
 
 ## Рабочие правила для следующих изменений
 
@@ -311,6 +364,9 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-08-18 | Реализован и локально установлен Этап 3. Добавлены `ProductionTicket`, state machine, транзакционное создание тикетов при принятии заказа, очереди кухни/бара со station/venue scope, waiter handoff/serve, aggregate round status, sold-out toggle и cursor-based polling/reconnect для production/service/guest. Миграция `20260818004303_stage3_production_queues` применилась к Neon и backfill-перенесла 4 тестовые позиции без дублей. Проверки: lint, typecheck, build, 221 unit-тест, migration status, DB-инварианты, QR/auth/cursor HTTP smoke и 20 параллельных guest polls. | По явной команде владельца начать Этап 3. SSE намеренно не включён до измерения на реальном Hostinger; автоматизированный браузер не был доступен, поэтому авторизованный визуальный проход кухни/бара оставлен владельцу. Этап 4 без отдельной команды не начинать. |
+| 2026-08-18 | Добавлен локальный developer QR-entry: кнопка на `/de` вызывает `/api/dev/qr-entry`, server-only получает активный токен стола 1 и пропускает запрос через реальный `/t/[token]` flow. Токен не попадает в HTML/JSON; route и domain helper независимо закрыты в production через `NODE_ENV`, production-ответ — `404`. Проверены lint, typecheck, production build, 209 unit-тестов и HTTP-flow `menu → dev helper → QR entry → Tisch 1` с HttpOnly-cookie. | По просьбе владельца для полноценного локального теста. Это только тестовая обвязка Этапа 2, не начало Этапа 3. При изменениях сохранять fail-closed guard и не переносить токен в Client Component. |
+| 2026-08-18 | Реализован и установлен Этап 2 (столы и заказы). Схема: DiningSession, SessionParticipant, OrderRound, OrderItem, OrderItemModifier, OrderRoundDecision + enum'ы SessionStatus/ReorderApprovalMode/OrderRoundStatus/OrderItemStatus; migration дополнена partial unique index активной сессии на стол. Добавлены server-side state machines, идемпотентная отправка по clientRequestId, immutable snapshots, решения официанта, reorder approval audit, ручной заказ, временная прямая отметка подачи, admin tables/QR, guest cart/status и service UI. Проверки: lint, typecheck, build, 209 unit-тестов, Neon schema/index и HTTP smoke — успешно. ProductionTicket намеренно не создавался. | По команде владельца установить `DMR-этап2-установка.md` и `dmr-stage2-files.zip`. Текущее решение: первый заказ за свободным столом автоматически открывает DiningSession (`actorType=GUEST`); первый раунд всегда требует официанта. Этап 3 без отдельной команды не начинать. |
 | 2026-08-18 | Локально установлен и проверен Этап 1. Конфигурация приведена к Prisma 7 (`prisma.config.ts`, URL удалены из `schema.prisma`, standalone-сид загружает `.env`), создана и применена миграция `stage1_foundation`, выполнен идемпотентный сид. Локальная production-сборка разрешена в фазе `next build`, при реальном production runtime запрет `MEDIA_STORAGE_PROVIDER=local` сохранён. Проверки: `lint`, `typecheck`, `build`, 169 unit-тестов, health/readiness, публичное меню, QR-cookie и редирект защиты админки — успешно. | Neon: Frankfurt, pooled runtime + direct migrations. Секреты, пароль владельца и QR-токены хранятся только локально в исключённых из Git `.env` и `temp/stage1-local-access.txt`. Этап 2 не начинался. |
 | 2026-08-17 | Реализован Этап 1 (фундамент и публичное меню). Создан репозиторий: Next.js 16.3.1 / React 19.2.8 / Prisma 7.9.1 / next-intl 4.13.7 / Tailwind 4. Prisma schema Этапа 1 (Venue, VenueSetting, DiningTable, TableQrToken, ProductionStation, TaxProfile, translation-first меню, Allergen/Additive/DietaryTag, MediaAsset, StaffUser/StaffSession/Role/Permission, AuditLog, LifecycleEvent), идемпотентный сид, публичное меню на `de`, вход по QR `/t/[token]`, логин персонала с rate limiting и отзываемыми сессиями, admin-обзор меню (read-only), `/api/health` и `/api/ready`, security headers. Проверки: `lint` — чисто, `test` — 169 тестов проходят (authorization matrix, деньги, translation fallback, rate limiting, пароли). Модели и маршруты Этапов 2–4 намеренно не создавались. | По команде владельца «Создавай проект согласно инструкциям». Открытые вопросы Этапа 0 остаются открытыми: провайдер object storage не выбран (загрузка медиа отключена, `MEDIA_STORAGE_PROVIDER=local` запрещён в production), Stripe не подключён, поведение SSE на Hostinger не измерено. |
 | 2026-08-17 | Подготовлен пакет документов Этапа 0 (discovery/проектирование) без создания репозитория и без кода. | По команде владельца «Начинай реализацию DMR» подтверждено, что фактическая реализация будет вестись в отдельной локальной сессии с доступом к `D:\projects\dmr`; эта cloud-сессия подготовила `AGENTS.md` и `docs/*.md` для переноса. Референс `konstantinm88/waldschl-sschen` изучен только для чтения (schema.prisma, restaurant-menu*.ts, RestaurantPageContent.tsx, admin-image-upload.ts, MenuVideoUploadField.tsx, AGENTS.md) — конкретные выводы см. в `docs/architecture.md` и `docs/implementation-plan.md`. |

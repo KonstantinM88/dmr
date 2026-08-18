@@ -27,7 +27,8 @@ PARTIALLY_PAID → PAYMENT_PENDING  (новая попытка оплаты ос
 SUBMITTED → ACCEPTED → IN_PROGRESS → READY → SERVED
 SUBMITTED → PARTIALLY_ACCEPTED → IN_PROGRESS → READY → SERVED
 SUBMITTED → REJECTED
-ACCEPTED/IN_PROGRESS/READY → CANCELLED   (ограниченно, аудируется)
+ACCEPTED/PARTIALLY_ACCEPTED/IN_PROGRESS/READY → CANCELLED
+                                             (ограниченно, аудируется)
 ```
 
 - Первый `OrderRound` сессии всегда создаётся в `SUBMITTED` и требует
@@ -48,8 +49,11 @@ SUBMITTED → REJECTED
 ACCEPTED/IN_PREPARATION → CANCELLED   (ограниченно, аудируется)
 ```
 
-Статус `OrderItem` управляется через `ProductionTicket` соответствующей
-станции, но хранится и на уровне позиции для гостевого UI.
+С Этапа 3 `ProductionTicket` управляет переходами позиции:
+`IN_PROGRESS` тикета переводит позицию в `IN_PREPARATION`, `READY` — в
+`READY`. Только после этого официант может выполнить «Serviert»: тикет
+`READY → HANDED_OFF`, позиция `READY → SERVED` в одной транзакции.
+Прямой Stage 2 путь из `ACCEPTED` больше не разрешён.
 
 ## 4. ProductionTicket
 
@@ -61,6 +65,14 @@ QUEUED/ACCEPTED/IN_PROGRESS → CANCELLED
 Тикет создаётся только для позиций уже `ACCEPTED` на уровне OrderRound
 (вручную официантом либо автоматически при `AUTO_ACCEPT`), направляется
 на станцию по `MenuItem.station`.
+
+- CHEF/BARTENDER могут менять только тикеты своей `station.kind`; проверка
+  выполняется server-side помимо общего `MANAGE_PRODUCTION_TICKET`.
+- Статус раунда агрегируется по активным позициям: первая готовящаяся
+  позиция → `IN_PROGRESS`, все активные готовы/поданы → `READY`, все поданы
+  → `SERVED`. Переходы записываются последовательно без перепрыгивания.
+- Каждый переход тикета и позиции пишет `LifecycleEvent` в той же
+  транзакции; staff-действие дополнительно пишет `AuditLog`.
 
 ## 5. Payment
 
@@ -76,7 +88,9 @@ webhook; `SUCCEEDED` создаётся только после верифици
 
 ## 6. Алгоритм submit OrderRound (обязательные 13 шагов, в одной транзакции где применимо)
 
-1. Проверить активную `DiningSession` (существует, не `CLOSED`/`CANCELLED`).
+1. Разрешить активный стол по QR. Если активной `DiningSession` нет, первый
+   гостевой заказ открывает её в той же транзакции (`actorType=GUEST`);
+   partial unique index не допускает две активные сессии на одном столе.
 2. Проверить, что сессия не в `PAYMENT_PENDING`.
 3. Проверить QR/participant session token.
 4. Проверить rate limit (по столу/участнику).
@@ -92,8 +106,8 @@ webhook; `SUCCEEDED` создаётся только после верифици
 11. Определить `SUBMITTED` vs `ACCEPTED` по текущему
     `reorderApprovalMode` сессии (для первого раунда — всегда
     `SUBMITTED`).
-12. Создать `LifecycleEvent`/domain event, при `ACCEPTED` — сразу создать
-    `ProductionTicket` на нужные станции.
+12. Создать `LifecycleEvent`/domain event. На Этапе 2 сохранить station в
+    snapshot позиции; `ProductionTicket` намеренно откладывается до Этапа 3.
 13. Вернуть детерминированный результат при безопасном повторе запроса
     (тот же `OrderRound`, не новый).
 
@@ -105,10 +119,14 @@ staff UI заметно (баннер текущего режима на экр�
 `MANAGE_REORDER_APPROVAL` может менять; официант может вернуть
 `REQUIRE_WAITER` в любой момент.
 
-## 8. Тестовое покрытие (Этап 1-2+)
+## 8. Тестовое покрытие (Этап 1-3+)
 
-Unit-тесты каждой state machine (валидные/невалидные переходы), unit-тест
-`reorderApprovalMode` (включая запрет в PAYMENT_PENDING/PAID/CLOSED/
-CANCELLED), concurrency-тест на двойной submit с одним
-`clientRequestId`, snapshot-тест на неизменность `OrderItem` при
-изменении цены меню после отправки заказа.
+После Этапа 3 проходят 221 unit-тест, включая валидные/невалидные переходы
+DiningSession/OrderRound/OrderItem, правила первого раунда и
+`reorderApprovalMode`, а также server-side pricing и snapshot-суммы.
+Идемпотентность дополнительно защищена unique constraint
+`(sessionId, clientRequestId)`; DB-level concurrency и snapshot integration
+tests остаются обязательными перед production hardening.
+Этап 3 добавляет unit-тесты полного/недопустимого пути ProductionTicket,
+сопоставления Ticket→OrderItem, агрегирования OrderRound и reconnect merge
+очереди (full snapshot, delta, terminal tombstones).

@@ -1,7 +1,9 @@
 // DMR — Prisma schema.
-// Область Этапа 1: Venue, столы/QR, translation-first меню, налоги, медиа,
-// персонал/RBAC, аудит. Модели Этапа 2+ (сессии, заказы, производство,
-// биллинг, платежи) добавляются отдельными миграциями по одобрению владельца.
+// Область Этапов 1–3: Venue, столы/QR, translation-first меню, налоги,
+// медиа, персонал/RBAC, сессии стола, заказы, производство и аудит.
+// Модели Этапа 4+
+// (биллинг, платежи) добавляются отдельными миграциями
+// по одобрению владельца.
 //
 // Правила (docs/data-model.md, docs/payment-model.md §2):
 //  - деньги — целые minor units (центы), поля *Cents, тип Int, валюта EUR;
@@ -46,6 +48,50 @@ enum SpiceLevel {
   HOT
 }
 
+enum SessionStatus {
+  OPEN
+  PAYMENT_PENDING
+  PARTIALLY_PAID
+  PAID
+  CLOSED
+  CANCELLED
+}
+
+enum ReorderApprovalMode {
+  REQUIRE_WAITER
+  AUTO_ACCEPT
+}
+
+enum OrderRoundStatus {
+  SUBMITTED
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  IN_PROGRESS
+  READY
+  SERVED
+  REJECTED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  SUBMITTED
+  ACCEPTED
+  IN_PREPARATION
+  READY
+  SERVED
+  REJECTED
+  CANCELLED
+}
+
+enum ProductionTicketStatus {
+  QUEUED
+  ACCEPTED
+  IN_PROGRESS
+  READY
+  HANDED_OFF
+  CANCELLED
+}
+
 enum ModifierSelectionType {
   SINGLE
   MULTIPLE
@@ -84,6 +130,7 @@ model Venue {
   taxProfiles TaxProfile[]
   stations   ProductionStation[]
   staff      StaffUser[]
+  sessions   DiningSession[]
 
   @@map("venues")
 }
@@ -112,8 +159,9 @@ model DiningTable {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  venue     Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  venue     Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
   qrTokens  TableQrToken[]
+  sessions  DiningSession[]
 
   @@unique([venueId, label])
   @@map("dining_tables")
@@ -144,8 +192,10 @@ model ProductionStation {
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 
-  venue Venue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  items MenuItem[]
+  venue      Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  items      MenuItem[]
+  orderItems OrderItem[]
+  tickets    ProductionTicket[]
 
   @@unique([venueId, kind, name])
   @@map("production_stations")
@@ -236,6 +286,7 @@ model MenuItem {
   allergens    MenuItemAllergen[]
   additives    MenuItemAdditive[]
   dietaryTags  MenuItemDietaryTag[]
+  orderItems   OrderItem[]
 
   @@unique([venueId, slug])
   @@index([categoryId, isPublished, sortOrder])
@@ -276,6 +327,7 @@ model MenuVariant {
   taxProfile   TaxProfile?              @relation(fields: [taxProfileId], references: [id], onDelete: SetNull)
   translations MenuVariantTranslation[]
   media        MediaAsset[]
+  orderItems   OrderItem[]
 
   @@index([itemId, sortOrder])
   @@map("menu_variants")
@@ -508,9 +560,11 @@ model StaffUser {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  venue    Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  roles    StaffUserRole[]
-  sessions StaffSession[]
+  venue           Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  roles           StaffUserRole[]
+  sessions        StaffSession[]
+  createdRounds   OrderRound[]
+  decidedRounds   OrderRoundDecision[]
 
   @@index([venueId, status])
   @@map("staff_users")
@@ -582,6 +636,200 @@ model StaffUserRole {
 
   @@id([staffUserId, roleId])
   @@map("staff_user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Сессии стола и участники (Этап 2)
+// ---------------------------------------------------------------------------
+
+/// Одно посещение стола. Активной может быть только одна незавершённая
+/// сессия на стол — это гарантирует partial unique index в миграции.
+model DiningSession {
+  id                  String              @id @default(cuid())
+  venueId             String
+  tableId             String
+  status              SessionStatus       @default(OPEN)
+  /// Режим подтверждения дозаказов живёт только внутри сессии и сбрасывается
+  /// при закрытии: это НЕ постоянная настройка физического стола.
+  reorderApprovalMode ReorderApprovalMode @default(REQUIRE_WAITER)
+  openedAt            DateTime            @default(now())
+  openedByStaffUserId String?
+  closedAt            DateTime?
+  closedByStaffUserId String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  venue        Venue                @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  table        DiningTable          @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  participants SessionParticipant[]
+  rounds       OrderRound[]
+
+  @@index([venueId, status, openedAt])
+  @@index([tableId, status])
+  @@map("dining_sessions")
+}
+
+/// Анонимный участник = одно устройство за столом. Персональных данных нет.
+/// В cookie кладётся секрет, в БД хранится только его SHA-256 хеш.
+model SessionParticipant {
+  id            String    @id @default(cuid())
+  sessionId     String
+  tokenHash     String    @unique
+  displayLabel  String?
+  seatLabel     String?
+  isStaffProxy  Boolean   @default(false)
+  joinedAt      DateTime  @default(now())
+  lastSeenAt    DateTime?
+
+  session      DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdRounds OrderRound[]
+  orderItems   OrderItem[]
+
+  @@index([sessionId])
+  @@map("session_participants")
+}
+
+// ---------------------------------------------------------------------------
+// Заказы (Этап 2)
+// ---------------------------------------------------------------------------
+
+/// Раунд отправки: первый заказ или дозаказ.
+/// `approvalMode` — snapshot режима на момент создания: последующее
+/// переключение режима не меняет уже созданные раунды ретроактивно.
+model OrderRound {
+  id                    String           @id @default(cuid())
+  sessionId             String
+  sequence              Int
+  status                OrderRoundStatus @default(SUBMITTED)
+  approvalMode          ReorderApprovalMode
+  isFirstRound          Boolean          @default(false)
+  /// Ключ идемпотентности от клиента: повтор возвращает тот же раунд.
+  clientRequestId       String
+  createdByParticipantId String?
+  createdByStaffUserId  String?
+  totalGrossCents       Int              @default(0)
+  submittedAt           DateTime         @default(now())
+  decidedAt             DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  session       DiningSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   SessionParticipant?  @relation(fields: [createdByParticipantId], references: [id], onDelete: SetNull)
+  staffUser     StaffUser?           @relation(fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  decisions     OrderRoundDecision[]
+
+  @@unique([sessionId, clientRequestId])
+  @@unique([sessionId, sequence])
+  @@index([sessionId, status])
+  @@map("order_rounds")
+}
+
+/// Позиция раунда с неизменяемым snapshot товара.
+/// Snapshot обязателен: изменение цены в меню после отправки не должно
+/// менять уже созданный заказ (docs/data-model.md §9).
+model OrderItem {
+  id                   String          @id @default(cuid())
+  roundId              String
+  orderedByParticipantId String?
+  menuItemId           String?
+  menuVariantId        String?
+  stationId            String?
+  status               OrderItemStatus @default(SUBMITTED)
+  seatLabel            String?
+  guestNote            String?
+
+  /// --- immutable snapshot на момент заказа ---
+  nameSnapshot         String
+  variantNameSnapshot  String?
+  localeSnapshot       String
+  unitPriceCents       Int
+  quantity             Int
+  lineTotalCents       Int
+  taxRateBasisPoints   Int
+  taxAmountCents       Int
+  stationKindSnapshot  ProductionStationKind?
+
+  /// --- финансовая привязка (заполняется с Этапа 4) ---
+  allocatedPaidCents   Int             @default(0)
+  remainingCents       Int             @default(0)
+
+  rejectedReason       String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  round       OrderRound          @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant SessionParticipant? @relation(fields: [orderedByParticipantId], references: [id], onDelete: SetNull)
+  menuItem    MenuItem?           @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  menuVariant MenuVariant?        @relation(fields: [menuVariantId], references: [id], onDelete: SetNull)
+  station     ProductionStation?  @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  modifiers   OrderItemModifier[]
+  productionTicket ProductionTicket?
+
+  @@index([roundId, status])
+  @@map("order_items")
+}
+
+// ---------------------------------------------------------------------------
+// Производственные очереди (Этап 3)
+// ---------------------------------------------------------------------------
+
+/// Одна принятая позиция заказа = один тикет станции. Unique по orderItemId
+/// делает маршрутизацию идемпотентной при повторных запросах/решениях.
+model ProductionTicket {
+  id          String                 @id @default(cuid())
+  orderItemId String                 @unique
+  stationId   String
+  status      ProductionTicketStatus @default(QUEUED)
+  queuedAt    DateTime               @default(now())
+  acceptedAt  DateTime?
+  startedAt   DateTime?
+  readyAt     DateTime?
+  handedOffAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  orderItem OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  station   ProductionStation @relation(fields: [stationId], references: [id], onDelete: Restrict)
+
+  @@index([stationId, status, queuedAt])
+  @@index([updatedAt])
+  @@map("production_tickets")
+}
+
+/// Snapshot выбранного модификатора и его цены на момент заказа.
+model OrderItemModifier {
+  id                  String   @id @default(cuid())
+  orderItemId         String
+  modifierOptionId    String?
+  groupTitleSnapshot  String
+  nameSnapshot        String
+  priceDeltaCents     Int
+  createdAt           DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("order_item_modifiers")
+}
+
+/// Решение официанта по раунду. Append-only: история решений не переписывается.
+model OrderRoundDecision {
+  id            String           @id @default(cuid())
+  roundId       String
+  staffUserId   String?
+  decision      OrderRoundStatus
+  acceptedItemIds String[]
+  rejectedItemIds String[]
+  note          String?
+  createdAt     DateTime         @default(now())
+
+  round     OrderRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  staffUser StaffUser? @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
+
+  @@index([roundId, createdAt])
+  @@map("order_round_decisions")
 }
 
 // ---------------------------------------------------------------------------

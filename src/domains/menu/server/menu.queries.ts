@@ -190,3 +190,21 @@ export async function getMenuOverview(venueSlug: string, locale: string) {
     })),
   }));
 }
+
+/** Позиции для ручного заказа официанта. */
+export async function getManualOrderOptions(venueSlug: string, locale: string) {
+  const items = await prisma.menuItem.findMany({
+    where: { venue: { slug: venueSlug }, isPublished: true, isAvailable: true },
+    orderBy: { sortOrder: 'asc' },
+    include: { translations: true },
+  });
+
+  return items.map((item) => ({
+    menuItemId: item.id,
+    name:
+      pickTranslation(item.translations, locale)?.name ??
+      pickTranslation(item.translations, defaultLocale)?.name ??
+      item.slug,
+    priceCents: item.basePriceCents,
+  }));
+}

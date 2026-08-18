@@ -65,6 +65,10 @@ WAITER не управляет глобальными ролями; BARTENDER н
 платежами и сотрудниками; ADMIN не может удалять финансовую историю;
 ACCOUNTANT не управляет кухонной/барной очередью.
 
+С Этапа 3 station scope проверяется дважды: queue route/server action требуют
+соответствующее `VIEW_KITCHEN_QUEUE` либо `VIEW_BAR_QUEUE`, а production
+domain service повторно сверяет `venueId` и `station.kind` самого тикета.
+
 ## 3. Аутентификация
 
 - Password hashing проверенной библиотекой (argon2id/bcrypt), не

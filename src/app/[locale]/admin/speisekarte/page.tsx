@@ -3,13 +3,14 @@ import { requirePermission } from '@/domains/staff/server/rbac';
 import { getMenuOverview } from '@/domains/menu/server/menu.queries';
 import { formatCents } from '@/lib/money';
 import { DEFAULT_VENUE_SLUG } from '@/lib/venue';
+import { AvailabilityToggle } from '@/components/menu/AvailabilityToggle';
+import { setAvailabilityAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Обзор меню для персонала. Этап 1 — только чтение: редактирование
- * категорий/позиций/цен добавляется вместе с server actions и инвалидацией
- * кэша меню.
+ * Обзор меню для персонала. Этап 3 добавляет оперативный sold-out toggle;
+ * полное редактирование категорий/цен остаётся отдельным admin-потоком.
  */
 export default async function AdminMenuPage(props: { params: Promise<{ locale: string }> }) {
   const { locale } = await props.params;
@@ -42,6 +43,11 @@ export default async function AdminMenuPage(props: { params: Promise<{ locale: s
                 {!item.isAvailable && (
                   <span className="text-xs text-[var(--color-clay)]">{t('soldOut')}</span>
                 )}
+                <AvailabilityToggle
+                  itemId={item.id}
+                  isAvailable={item.isAvailable}
+                  action={setAvailabilityAction}
+                />
                 {item.stationName && (
                   <span className="font-[family-name:var(--font-mono)] text-xs text-[var(--color-paper-faint)]">
                     {item.stationName}

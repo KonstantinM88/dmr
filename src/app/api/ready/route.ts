@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { checkDatabaseReadiness } from '@/domains/system/server/readiness.service';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -9,17 +9,16 @@ export const dynamic = 'force-dynamic';
  * Детали ошибки наружу не отдаются — только в лог.
  */
 export async function GET() {
-  const startedAt = Date.now();
+  const readiness = await checkDatabaseReadiness();
 
-  try {
-    await prisma.$queryRaw`SELECT 1`;
+  if (readiness.ready) {
     return NextResponse.json({
       status: 'ready',
       database: 'up',
-      latencyMs: Date.now() - startedAt,
+      latencyMs: readiness.latencyMs,
     });
-  } catch (error) {
-    logger.error('Readiness check failed', { error: String(error) });
-    return NextResponse.json({ status: 'degraded', database: 'down' }, { status: 503 });
   }
+
+  logger.error('Readiness check failed', { error: String(readiness.error) });
+  return NextResponse.json({ status: 'degraded', database: 'down' }, { status: 503 });
 }

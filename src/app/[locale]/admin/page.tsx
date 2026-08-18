@@ -14,6 +14,10 @@ export default async function AdminHomePage(props: { params: Promise<{ locale: s
 
   const sections = [
     { href: '/admin/speisekarte', label: t('menu'), permission: 'MANAGE_MENU' as const },
+    { href: '/admin/tische', label: t('tables'), permission: 'MANAGE_TABLES_QR' as const },
+    { href: '/service', label: t('service'), permission: 'VIEW_ASSIGNED_TABLES' as const },
+    { href: '/produktion/kueche', label: t('kitchen'), permission: 'VIEW_KITCHEN_QUEUE' as const },
+    { href: '/produktion/bar', label: t('bar'), permission: 'VIEW_BAR_QUEUE' as const },
   ];
 
   return (
