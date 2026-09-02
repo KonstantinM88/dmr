@@ -19,11 +19,38 @@ export async function getGuestChangeFeed(
   if (!cursor) return { changed: false, cursor: snapshotAt.toISOString() };
 
   const session = await getActiveSessionForTable(table.tableId);
-  const [menuChanged, roundsChanged, itemsChanged] = await Promise.all([
+  const [menuChanged, sessionChanged, billChanged, attemptChanged, waiterCallChanged, roundsChanged, itemsChanged] = await Promise.all([
     prisma.menuItem.count({
       where: { venueId: table.venueId, updatedAt: { gt: cursor, lte: snapshotAt } },
       take: 1,
     }),
+    session
+      ? prisma.diningSession.count({
+          where: { id: session.id, updatedAt: { gt: cursor, lte: snapshotAt } },
+          take: 1,
+        })
+      : 0,
+    session
+      ? prisma.bill.count({
+          where: { sessionId: session.id, updatedAt: { gt: cursor, lte: snapshotAt } },
+          take: 1,
+        })
+      : 0,
+    session
+      ? prisma.paymentAttempt.count({
+          where: {
+            bill: { sessionId: session.id },
+            updatedAt: { gt: cursor, lte: snapshotAt },
+          },
+          take: 1,
+        })
+      : 0,
+    session
+      ? prisma.waiterCall.count({
+          where: { sessionId: session.id, updatedAt: { gt: cursor, lte: snapshotAt } },
+          take: 1,
+        })
+      : 0,
     session
       ? prisma.orderRound.count({
           where: { sessionId: session.id, updatedAt: { gt: cursor, lte: snapshotAt } },
@@ -42,7 +69,10 @@ export async function getGuestChangeFeed(
   ]);
 
   return {
-    changed: menuChanged + roundsChanged + itemsChanged > 0,
+    changed:
+      menuChanged + sessionChanged + billChanged + attemptChanged + waiterCallChanged +
+        roundsChanged + itemsChanged >
+      0,
     cursor: snapshotAt.toISOString(),
   };
 }
@@ -57,7 +87,7 @@ export async function getServiceChangeFeed(
   `;
   if (!cursor) return { changed: false, cursor: snapshotAt.toISOString() };
 
-  const [sessionsChanged, roundsChanged, itemsChanged] = await Promise.all([
+  const [sessionsChanged, roundsChanged, itemsChanged, billsChanged, attemptsChanged, callsChanged] = await Promise.all([
     prisma.diningSession.count({
       where: { venueId, updatedAt: { gt: cursor, lte: snapshotAt } },
       take: 1,
@@ -70,10 +100,28 @@ export async function getServiceChangeFeed(
       where: { round: { session: { venueId } }, updatedAt: { gt: cursor, lte: snapshotAt } },
       take: 1,
     }),
+    prisma.bill.count({
+      where: { session: { venueId }, updatedAt: { gt: cursor, lte: snapshotAt } },
+      take: 1,
+    }),
+    prisma.paymentAttempt.count({
+      where: {
+        bill: { session: { venueId } },
+        updatedAt: { gt: cursor, lte: snapshotAt },
+      },
+      take: 1,
+    }),
+    prisma.waiterCall.count({
+      where: { session: { venueId }, updatedAt: { gt: cursor, lte: snapshotAt } },
+      take: 1,
+    }),
   ]);
 
   return {
-    changed: sessionsChanged + roundsChanged + itemsChanged > 0,
+    changed:
+      sessionsChanged + roundsChanged + itemsChanged + billsChanged + attemptsChanged +
+        callsChanged >
+      0,
     cursor: snapshotAt.toISOString(),
   };
 }

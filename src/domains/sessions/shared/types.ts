@@ -24,4 +24,15 @@ export type SessionSummary = {
   participantCount: number;
   pendingRoundCount: number;
   totalGrossCents: number;
+  waiterCall: {
+    id: string;
+    status: 'OPEN' | 'ACKNOWLEDGED';
+    requestedAt: string;
+  } | null;
+  activePaymentAttempt: {
+    id: string;
+    method: 'STRIPE' | 'CASH' | 'TERMINAL';
+    amountCents: number;
+    createdAt: string;
+  } | null;
 };

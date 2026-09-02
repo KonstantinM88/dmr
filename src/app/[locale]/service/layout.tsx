@@ -31,9 +31,9 @@ export default async function ServiceLayout(props: {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-5 py-8">
+    <div className="service-shell mx-auto w-full max-w-4xl px-5 py-8">
       <PollingRefresh endpoint="/api/live/service" visibleIntervalMs={4_000} />
-      <header className="border-b border-[var(--color-ink-800)] pb-4">
+      <header className="print-hidden border-b border-[var(--color-ink-800)] pb-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
             <p className="eyebrow">{t('title')}</p>

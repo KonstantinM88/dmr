@@ -49,10 +49,28 @@ export async function getActiveSessionBoard(venueSlug: string): Promise<SessionS
       table: { select: { label: true } },
       _count: { select: { participants: true } },
       rounds: { select: { status: true, totalGrossCents: true } },
+      waiterCalls: {
+        where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] } },
+        orderBy: { requestedAt: 'asc' },
+        take: 1,
+      },
+      bills: {
+        take: 1,
+        include: {
+          attempts: {
+            where: { status: { in: ['CREATED', 'PENDING'] } },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+          },
+        },
+      },
     },
   });
 
-  return sessions.map((session) => ({
+  return sessions.map((session) => {
+    const waiterCall = session.waiterCalls[0];
+    const activePaymentAttempt = session.bills[0]?.attempts[0];
+    return {
     id: session.id,
     tableId: session.tableId,
     tableLabel: session.table.label,
@@ -64,7 +82,23 @@ export async function getActiveSessionBoard(venueSlug: string): Promise<SessionS
     totalGrossCents: session.rounds
       .filter((round) => round.status !== 'REJECTED' && round.status !== 'CANCELLED')
       .reduce((sum, round) => sum + round.totalGrossCents, 0),
-  }));
+    waiterCall: waiterCall
+      ? {
+          id: waiterCall.id,
+          status: waiterCall.status as 'OPEN' | 'ACKNOWLEDGED',
+          requestedAt: waiterCall.requestedAt.toISOString(),
+        }
+      : null,
+    activePaymentAttempt: activePaymentAttempt
+      ? {
+          id: activePaymentAttempt.id,
+          method: activePaymentAttempt.method,
+          amountCents: activePaymentAttempt.amountCents,
+          createdAt: activePaymentAttempt.createdAt.toISOString(),
+        }
+      : null,
+    };
+  });
 }
 
 export async function getSessionDetail(sessionId: string) {

@@ -37,8 +37,9 @@ Claude Code / Codex и других агентов. Перед существе�
   без root/Docker/Redis/системного FFmpeg/гарантированных долгоживущих
   WebSocket), существующий Neon PostgreSQL project, Stripe. Расширение
   ресурсов — только по измеренным порогам, см. `docs/scaling-thresholds.md`.
-- UI первой версии — только немецкий (`de`), локализация архитектурно
-  готова к `en`/`ru`/другим с первого дня.
+- UI первой версии полностью включён на немецком (`de`) и русском (`ru`)
+  для guest, staff/admin и production; немецкий остаётся default/fallback.
+  Архитектура готова к `en`/другим языкам без изменения схемы.
 - При ответах владельцу проекта — русский язык.
 
 ## Формат отчёта владельцу после изменений
@@ -70,10 +71,10 @@ Claude Code / Codex и других агентов. Перед существе�
 8. `docs/` — архитектурные решения; при расхождении с кодом код имеет
    приоритет, но расхождение нужно исправить в docs или в коде.
 
-## Текущее состояние установки (2026-08-18)
+## Текущее состояние установки (2026-09-02)
 
-- Этапы 1–3 установлены и локально проверены в `D:\projects\dmr`; Этап 4
-  не начинать без отдельной явной команды владельца.
+- Этапы 1–4 и согласованная часть Этапа 5 установлены и локально проверены
+  в `D:\projects\dmr`. Остальной scope Этапа 5 не расширять без новой команды.
 - Node.js при последней проверке: `v22.14.0`, требование проекта — `>=22`.
 - Зависимости установлены, `package-lock.json` создан, Prisma Client
   сгенерирован в игнорируемый `src/generated/prisma`.
@@ -83,19 +84,37 @@ Claude Code / Codex и других агентов. Перед существе�
   решения о полной замене существующей модели аутентификации.
 - Применены миграции `20260817222350_stage1_foundation`,
   `20260817233152_stage2_sessions_orders` и
-  `20260818004303_stage3_production_queues`; Stage 2 migration содержит
+  `20260818004303_stage3_production_queues`,
+  `20260818022747_stage4_billing_payments`,
+  `20260818052000_stage5_split_cash_waiter_calls` и
+  `20260902174500_stage5_quantity_split_payments`; Stage 2 migration содержит
   обязательный partial unique index `dining_sessions_active_per_table`,
-  Stage 3 — `ProductionTicket` и безопасный backfill существующих позиций.
+  Stage 3 — `ProductionTicket` и безопасный backfill существующих позиций,
+  Stage 4 — финансовые таблицы, partial unique/provider indexes и денежные
+  CHECK constraints, Stage 5 — WaiterCall, планы распределения попыток,
+  связь CashSettlement→Payment и дополнительные partial/CHECK constraints;
+  quantity-split migration добавляет quantity в план/факт allocations и
+  expected remainder для optimistic concurrency.
   На дату записи Prisma сообщает `Database schema is up to date`.
 - Сид выполнен: 1 Venue, 8 DiningTable, 8 активных TableQrToken, 9 MenuItem,
   1 StaffUser-владелец, 6 ролей. Сид идемпотентный и после Stage 2 повторно
   не запускался. Новые session/order tables изначально пусты.
-- Тестовая сессия Tisch 1 после Stage 3: четыре production ticket без дублей;
-  три ранее поданные позиции backfill-перенесены в `HANDED_OFF`, одна ещё не
-  поданная позиция — в `QUEUED`. Не менять эти данные без тестовой причины.
-- Последняя полная проверка успешна: ESLint, TypeScript, production build,
-  221 unit-тест, migration/backfill-инварианты, `/api/health`, `/api/ready`,
-  QR-cookie, authorization/cursor HTTP smoke и 20 параллельных guest polls.
+- Последний ручной тест Tisch 1 завершён: счёт 35,50 EUR оплачен двумя
+  CASH-платежами — 3,20 EUR (получено 5,00, сдача 1,80) и 32,30 EUR
+  (получено 40,00, сдача 7,70); allocations сходятся, Bill `PAID`, остаток 0,
+  DiningSession `CLOSED`. Последняя оплата ещё была whole-line: 2 пива одной
+  allocation; quantity-split UI установлен после этого теста.
+- Текущая state machine разрешает оплатить/закрыть стол до завершения
+  production tickets. Не менять это правило без отдельного бизнес-решения.
+- Последняя проверка успешна: ESLint, TypeScript, production build, 278
+  unit-тестов, migration status и реальные Neon probes. Backfill подтвердил
+  25 planned/22 final allocations без quantity/amount нарушений; partial-unit
+  SQL обновил ровно одну из двух единиц и полностью откатился. Встроенный
+  browser не содержит staff-сессии владельца, поэтому авторизованный
+  визуальный quantity-split оставлен владельцу; Stage 4 Playwright 20/20
+  остаётся последним полным E2E. Chromium установлен.
+- Сейчас последняя тестовая DiningSession Tisch 1 `CLOSED`; следующий DEV QR
+  заказ создаст новую сессию и нового participant для повторного smoke.
 - Не считать dev-сервер работающим между сессиями. Всегда проверять порт и
   `/api/health`; PID — временное значение и в документацию не записывается.
 
@@ -114,6 +133,7 @@ src/
     production/             # ProductionStation, ProductionTicket, SSE/poll
     billing/                 # Bill, аллокации
     payments/                # PaymentAttempt, Payment, Stripe webhook
+    service-requests/        # WaiterCall и guest→service уведомления
     staff/                   # StaffUser, роли, разрешения, аутентификация
     localization/            # message catalogs, translation-модель
     media/                    # storage adapter, upload validation
@@ -141,9 +161,12 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 `/[locale]/admin/tische` и 40 unit-тестов. На Этапе 3 добавлены
 `domains/{production,realtime}`, `/[locale]/produktion/{kueche,bar}`,
 `/api/production/queue`, `/api/live/{guest,service}` и sold-out action.
-Домены `billing`, `payments`, `notifications` появятся на своих этапах.
+На Этапе 4 добавлены `domains/{billing,payments}`, `/[locale]/bezahlen`,
+`/[locale]/admin/zahlungen` и `/api/stripe/webhook`. Домен `notifications`
+появится на своём этапе. В согласованной части Этапа 5 добавлен
+`domains/service-requests`, split/cash UI в `/bezahlen` и service alerts.
 
-## Решения, принятые на Этапах 1–3 (не пересматривать без миграции)
+## Решения, принятые на Этапах 1–5 (не пересматривать без миграции)
 
 - Деньги — целые minor units (евроценты), поля `*Cents` типа `Int`,
   валюта EUR. Реализация и тесты: `src/lib/money.ts`, `tests/unit/money.test.ts`.
@@ -174,6 +197,13 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 - Переходы тикета защищены optimistic concurrency (`updateMany` с исходным
   status); повторное/одновременное действие возвращает invalid transition и
   не создаёт повторный lifecycle event.
+- Перед решением по `SUBMITTED` OrderRound официант с
+  `APPROVE_ORDER_ROUND` может изменить quantity позиции кнопками −/+ в
+  диапазоне 1–50. Клиент передаёт только полный набор item ID/quantity;
+  сервер использует snapshot unit price/tax rate и транзакционно пересчитывает
+  line total, tax, remaining и round total до создания ProductionTicket.
+  Изменение после подтверждения запрещено; минимум 1, отказ — отдельный
+  checkbox. Старое/новое количество пишется в LifecycleEvent и AuditLog.
 - Realtime Этапа 3 — polling по DB-time cursor: production 3/10 секунд,
   service 4/15, guest 8/15. Terminal tickets приходят как tombstones; reconnect
   сохраняет snapshot. SSE не включать до измерения на реальном Hostinger,
@@ -183,6 +213,56 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 - Не более одной незавершённой DiningSession на стол гарантируют и
   transactional check, и partial unique index в migration SQL. Prisma schema
   сам этот partial index не описывает — не потерять его при новых миграциях.
+- На DiningSession существует не более одного Bill. Подготовка/просмотр счёта
+  не блокирует дозаказы; блокировка начинается только с активной
+  `PaymentAttempt`, когда Bill и DiningSession атомарно переходят в
+  `PAYMENT_PENDING`.
+- Полностью оплаченная `DiningSession` закрывается отдельным действием
+  `PAID → CLOSED`. Кнопка доступна с `MANAGE_DINING_SESSION` на экране стола
+  и в операционном блоке `/[locale]/admin/zahlungen`; финансовые записи при
+  этом не переписываются. После `CLOSED` следующий заказ по действующему QR
+  создаёт новую сессию и нового participant.
+- Stage 5 позволяет выбрать весь остаток/целые строки OrderItem, а staff с
+  `REGISTER_CASH_PAYMENT` — целое количество единиц от 1 до неоплаченного
+  остатка строки. `PaymentAttemptAllocation` хранит quantity, серверную сумму
+  и expected remainder; `PaymentAllocation` сохраняет фактически оплаченное
+  quantity для истории и печати. Произвольная сумма и дробление одной единицы
+  не реализованы; клиентские суммы никогда не принимаются.
+- Stripe idempotency key создаётся один раз вместе с PaymentAttempt и
+  повторно используется при неопределённом результате провайдера. Partial
+  unique index запрещает две `CREATED`/`PENDING` попытки одного Bill.
+- Stripe webhook — источник истины: подпись обязательна; event сначала
+  захватывается через `RECEIVED → PROCESSING`, повтор/lease-retry безопасен;
+  amount/currency сверяются с попыткой, а Payment, allocations, Bill,
+  DiningSession и financial audit фиксируются одной транзакцией.
+- Гостевая отмена PaymentIntent разрешена только QR-cookie того же стола.
+  Неопределённый ответ Stripe не снимает локальный lock, чтобы не открыть
+  путь к двойному списанию.
+- Наличную `PaymentAttempt(method=CASH, PENDING)` может создать guest-клик
+  или сам сотрудник с `REGISTER_CASH_PAYMENT` на экране стола без действия
+  гостя. Выбор позиций и суммы всегда пересчитываются сервером. `Payment`,
+  allocations и `CashSettlement` создаёт только сотрудник с тем же permission
+  после ввода полученной суммы; сдача считается в integer cents. Полная
+  оплата переводит Bill/DiningSession в PAID, после чего сотрудник отдельно
+  закрывает DiningSession.
+- Staff-ввод наличных принимает фактически полученный номинал, показывает
+  сдачу до подтверждения и предлагает точную/ближайшие суммы. Источник истины
+  остаётся серверным: `CashSettlement.receivedCents/changeCents` считаются в
+  integer cents и недоплата отклоняется.
+- Печатные маршруты `/[locale]/service/[sessionId]/druck[/[paymentId]]`
+  показывают внутреннюю полную ведомость или одну сохранённую успешную оплату,
+  scoped по `venueId` и защищены `VIEW_ASSIGNED_TABLES`. Это не Kassenbon,
+  не Rechnung и не TSE-документ; не ослаблять маркировку до POS/TSE-решения.
+- Финансовые интерактивные транзакции используют `timeout=20s` для удалённого
+  Neon. Подтверждение CASH обновляет выбранные OrderItem одной optimistic
+  SQL batch-операцией; несовпадение любого ожидаемого остатка откатывает всю
+  транзакцию и не оставляет частичных Payment/allocations/CashSettlement.
+- Одновременно на Bill разрешена только одна активная попытка независимо от
+  CASH/STRIPE. Поэтому разные гости платят последовательно и не могут
+  зарезервировать одну позицию дважды.
+- WaiterCall: `OPEN → ACKNOWLEDGED → RESOLVED`, guest может CANCEL активный
+  вызов. Partial unique index допускает один активный вызов на DiningSession;
+  service board показывает Tisch и живую длительность ожидания.
 
 ## Env contract (имена без значений, см. `docs/hostinger-deployment.md`)
 
@@ -203,6 +283,11 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 `MEDIA_STORAGE_ACCESS_KEY_ID`, `MEDIA_STORAGE_SECRET_ACCESS_KEY`,
 `MEDIA_STORAGE_PUBLIC_BASE_URL`, `CRON_SECRET`, `SEED_OWNER_EMAIL`,
 `SEED_OWNER_PASSWORD`.
+
+Stripe contract Этапа 4: все три переменные либо пусты, либо заданы вместе.
+Пока они пусты, приложение работает с явно отключённой оплатой. Разрешены
+только test-mode префиксы `sk_test_`, `pk_test_`, `whsec_`; значения никогда
+не выводить. Live mode без отдельного production-решения запрещён.
 
 Правила URL Neon:
 
@@ -267,6 +352,7 @@ npm run db:generate
 npm run db:migrate -- --name <meaningful_name>
 npm run db:migrate:deploy
 npm run db:seed
+npm run db:seed:ru
 npm run db:studio
 ```
 
@@ -316,6 +402,21 @@ npm run db:studio
   `/de/produktion/kueche` показывает текущий `QUEUED` тикет, а
   `/de/produktion/bar` — отдельную очередь. Для production delta проверять
   full snapshot, затем cursor delta и удаление `HANDED_OFF` tombstone.
+- Stage 4 smoke без Stripe-ключей: QR-entry → `/de/bezahlen` показывает
+  fail-closed сообщение; неподписанный/поддельный webhook → 503; анонимный
+  `/de/admin/zahlungen` → redirect. С тестовыми ключами дополнительно нужны
+  Stripe CLI, success/failure test cards и повторная доставка того же event.
+- Stage 5 smoke: после QR `/de` содержит `Service rufen`; `/de/bezahlen`
+  содержит выбор открытых строк и наличных, а card показывает disabled при
+  пустом Stripe env. Вручную проверить call→ack→resolve и cash
+  request→staff confirm→partial/full PAID→close table.
+- Locale smoke: `/ru`, `/ru/anmelden`, guest/staff/admin/production экраны и
+  форматирование денег работают на русском; переключатель `DE/RU` сохраняет
+  текущий маршрут. `npm run db:seed:ru` идемпотентно добавляет только русские
+  переводы демо-меню и не меняет операционные данные.
+- Повторный локальный QR-smoke через `/api/dev/qr-entry` очищает только
+  participant-cookie, имитируя новое гостевое устройство. Сначала полностью
+  оплатить и закрыть прежнюю сессию; QR-токен при этом не ротируется.
 - При HTTP-автоматизации проверять QR в два шага (ответ 307/Set-Cookie, затем
   `/de` с той же cookie session): некоторые клиенты теряют cookie при
   автоматическом redirect и дают ложный отрицательный результат.
@@ -333,7 +434,8 @@ npm run db:studio
 ## Открытые решения (не принимать автоматически)
 
 - Object storage/CDN — не выбран; это блокирует production media upload.
-- Stripe account/production resources — не подключены; Этап 4.
+- Stripe test keys локально ещё не настроены, production account/resources
+  не подключены. Наличные работают независимо; не переходить на live mode.
 - Финальный домен/поддомен QR — не выбран; не печатать финальные QR до решения.
 - Neon plan/лимиты соединений — уточнить до нагрузочных решений.
 - Интеграция с сайтом Waldschlösschen — по умолчанию отсутствует.
@@ -364,6 +466,13 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-02 | Официант может дробить строку заказа по целым единицам при прямом CASH-расчёте: UI −/+ выбирает quantity от 0 до неоплаченного остатка, сумма считается по snapshot unit price. `PaymentAttemptAllocation` хранит quantity и expectedRemainingCents, `PaymentAllocation` — фактически оплаченное quantity; CASH и Stripe webhook проверяют план, печать показывает количество конкретной части. Миграция `20260902174500_stage5_quantity_split_payments` применена с backfill. Проверены lint, typecheck, build, 278 unit-тестов, migration status, 25/22 старых allocations и rollback-probe одной из двух единиц. | По просьбе владельца разрешить официанту принять оплату за 1 единицу из строки quantity=2. Клиент не передаёт сумму; произвольная сумма и дробление одной единицы остаются вне scope. Последний ручной счёт 35,50 EUR закрыт до установки нового UI, поэтому новый сценарий требуется проверить на свежей сессии. |
+| 2026-09-02 | На наличном экране официанта добавлены быстрые номиналы и живой расчёт сдачи до подтверждения; серверная проверка и integer-cents `CashSettlement` сохранены. Добавлены защищённые venue-scoped печатные маршруты полной внутренней платёжной ведомости и каждой успешной частичной оплаты, обязательная нефискальная маркировка и постоянная кнопка возврата к списку столов на detail-экране. Проверены lint, typecheck, production build, 274 unit-теста и read-only Neon probe: 3 части/69,00 EUR, allocations сходятся, чужой venue получает null. | По просьбе владельца ускорить расчёт наличными, подготовить раздельную печать и навигацию официанта между многими столами. Это внутренние ведомости, не Kassenbon/Rechnung/TSE; schema/migration не менялись. Последний Tisch 1 закрыт, но его 6 production tickets всё ещё QUEUED — отдельное бизнес-решение следующего шага. |
+| 2026-09-02 | На экране решения официанта добавлены кнопки −/+ для изменения количества каждой выбранной позиции до подтверждения (1–50) с немедленным перерасчётом видимой суммы. Server action принимает только item ID/quantity; domain service проверяет venue, SUBMITTED, полный уникальный набор позиций и транзакционно пересчитывает line/tax/remaining/round totals из snapshot-цены до создания ProductionTicket. Изменения количества аудируются в LifecycleEvent/AuditLog. Проверены lint, typecheck, production build, 271 unit-тест, реальный rollback-probe SQL в Neon и HTTP readiness; dev-сервер запущен на 3000 без записи временного PID в документацию. | По просьбе владельца разрешить официанту корректировать количество перед подтверждением. Schema/migration не менялись; quantity после подтверждения остаётся неизменяемым, 0 не заменяет явное отклонение позиции. Текущий Tisch 1 OPEN с одним pending-раундом из пяти позиций сохранён для ручной проверки. |
+| 2026-08-18 | Исправлен P2028 при подтверждении наличных через удалённый Neon: финансовые транзакции получили timeout 20s, последовательные обновления OrderItem заменены одной optimistic SQL batch-операцией с полным rollback при конфликте. На staff-экране стола добавлен прямой выбор всего остатка/отдельных позиций и запуск CASH PaymentAttempt без guest-клика. Проверены lint, typecheck, build, 263 unit-теста, реальный повтор ранее откатившейся операции, DB-инварианты и чистый HTTP-smoke. | По просьбе владельца устранить timeout и позволить официанту принять оплату без возврата гостя в приложение. Тестовый счёт 93,10 EUR теперь полностью `PAID` и готов к ручной проверке закрытия. Stripe/терминальная оплата сотрудником остаётся отдельным будущим scope до подключения провайдера. |
+| 2026-08-18 | Полностью включена локаль `ru`: общий `DE/RU` switcher, сохранение locale при staff login/logout, русские guest/staff/admin/production каталоги, Stripe locale и русские переводы seed-меню (`db:seed:ru`). На `/[locale]/admin/zahlungen` добавлен отдельный операционный список `PAID` сессий с закрытием через существующий `MANAGE_DINING_SESSION`; DEV QR очищает participant-cookie для нового guest-smoke. Проверены lint, typecheck, build, 263 unit-теста, `de`/`ru`/login/QR HTTP-smoke и чистые новые логи. | По просьбе владельца добавить русский язык, видимое закрытие полностью оплаченного стола и повторный клиентский QR-тест. Схема/миграции и финансовые записи не менялись. Текущий Bill ещё `OPEN` с остатком 93,10 EUR, поэтому кнопка появится после полной оплаты. |
+| 2026-08-18 | Реализована согласованная часть Этапа 5: выбор всего остатка/конкретных позиций, последовательные CASH/STRIPE attempts, staff-подтверждение наличных со сдачей и allocations, полное закрытие оплаченной DiningSession, guest WaiterCall и service alert с длительностью. Миграция `20260818052000_stage5_split_cash_waiter_calls` применена; 259 unit-тестов, lint/typecheck/build, DB-invariants и QR HTTP-smoke прошли. | По явной команде владельца добавить наличные/split и вызов официанта. Stripe остаётся fail-closed. Интерактивный browser binding был недоступен, поэтому визуальный call/cash staff flow проверить вручную. Терминал, дробление одной строки/произвольная сумма, tips/refunds/shift reconciliation не реализовывать без новой команды. |
+| 2026-08-18 | Реализован и локально установлен Этап 4: Bill/PaymentAttempt/Payment/PaymentAllocation, Stripe Payment Element и webhook, PAYMENT_PENDING lock, reconciliation и read-only отчёт. Миграция `20260818022747_stage4_billing_payments` применена к Neon и усилена partial unique/provider indexes и денежными CHECK constraints. Проверки: lint, typecheck, build, 252 unit-теста, 20/20 Playwright, QR payment fail-closed, migration status и DB-инварианты. | По явной команде владельца установить `DMR-этап4-установка.md` и `dmr-stage4-files.zip`. Stripe-переменные пока пусты, поэтому реальных PaymentAttempt/Payment/provider events нет; полный подписанный test-mode webhook сценарий выполнить после подключения test keys и Stripe CLI. Этап 5 без отдельной команды не начинать. |
 | 2026-08-18 | Реализован и локально установлен Этап 3. Добавлены `ProductionTicket`, state machine, транзакционное создание тикетов при принятии заказа, очереди кухни/бара со station/venue scope, waiter handoff/serve, aggregate round status, sold-out toggle и cursor-based polling/reconnect для production/service/guest. Миграция `20260818004303_stage3_production_queues` применилась к Neon и backfill-перенесла 4 тестовые позиции без дублей. Проверки: lint, typecheck, build, 221 unit-тест, migration status, DB-инварианты, QR/auth/cursor HTTP smoke и 20 параллельных guest polls. | По явной команде владельца начать Этап 3. SSE намеренно не включён до измерения на реальном Hostinger; автоматизированный браузер не был доступен, поэтому авторизованный визуальный проход кухни/бара оставлен владельцу. Этап 4 без отдельной команды не начинать. |
 | 2026-08-18 | Добавлен локальный developer QR-entry: кнопка на `/de` вызывает `/api/dev/qr-entry`, server-only получает активный токен стола 1 и пропускает запрос через реальный `/t/[token]` flow. Токен не попадает в HTML/JSON; route и domain helper независимо закрыты в production через `NODE_ENV`, production-ответ — `404`. Проверены lint, typecheck, production build, 209 unit-тестов и HTTP-flow `menu → dev helper → QR entry → Tisch 1` с HttpOnly-cookie. | По просьбе владельца для полноценного локального теста. Это только тестовая обвязка Этапа 2, не начало Этапа 3. При изменениях сохранять fail-closed guard и не переносить токен в Client Component. |
 | 2026-08-18 | Реализован и установлен Этап 2 (столы и заказы). Схема: DiningSession, SessionParticipant, OrderRound, OrderItem, OrderItemModifier, OrderRoundDecision + enum'ы SessionStatus/ReorderApprovalMode/OrderRoundStatus/OrderItemStatus; migration дополнена partial unique index активной сессии на стол. Добавлены server-side state machines, идемпотентная отправка по clientRequestId, immutable snapshots, решения официанта, reorder approval audit, ручной заказ, временная прямая отметка подачи, admin tables/QR, guest cart/status и service UI. Проверки: lint, typecheck, build, 209 unit-тестов, Neon schema/index и HTTP smoke — успешно. ProductionTicket намеренно не создавался. | По команде владельца установить `DMR-этап2-установка.md` и `dmr-stage2-files.zip`. Текущее решение: первый заказ за свободным столом автоматически открывает DiningSession (`actorType=GUEST`); первый раунд всегда требует официанта. Этап 3 без отдельной команды не начинать. |

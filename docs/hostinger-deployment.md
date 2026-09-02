@@ -27,6 +27,12 @@ worker-процесс, системный FFmpeg, произвольные си�
 вопрос, см. `implementation-plan.md`), `CRON_SECRET` (fail-closed без
 него), `NODE_ENV`. Значения никогда не попадают в docs/commits/логи.
 
+На Этапе 4 три Stripe-переменные задаются только вместе либо все остаются
+пустыми. Неполная конфигурация завершает старт ошибкой, пустая конфигурация
+оставляет оплату явно недоступной (`fail-closed`). Текущий код принимает
+только `sk_test_`/`pk_test_`/`whsec_`; переход на live mode относится к
+production hardening и требует отдельного одобрения, checklist и rollback.
+
 ## 4. Обязательные эндпоинты
 
 - `GET /api/health` — процесс жив (без обращения к БД, быстрый ответ).
@@ -71,7 +77,8 @@ Next.js хранит только `MediaAsset` metadata+URL. Тяжёлый tran
   compute/storage/network transfer на стороне Neon (см.
   `scaling-thresholds.md`).
 - Безопасный restart процесса без потери in-flight запросов на webhook
-  (Stripe ретраит недоставленные события — не критично при коротком evroцессе restart).
+  (Stripe ретраит недоставленные события — не критично при коротком
+  перезапуске процесса).
 - Rollback procedure: откат на предыдущий известный good-деплой из
   GitHub + `prisma migrate status` проверка перед повторным стартом,
   миграции — только forward-compatible до подтверждения отката (не

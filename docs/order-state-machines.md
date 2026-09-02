@@ -19,7 +19,11 @@ PARTIALLY_PAID → PAYMENT_PENDING  (новая попытка оплаты ос
   `{PAYMENT_PENDING, PAID, CLOSED, CANCELLED}` — `AUTO_ACCEPT` запрещён
   в этих статусах.
 - Закрытие (`CLOSED`) — отдельное бизнес-действие после `PAID`, не
-  автоматическое.
+  автоматическое. Оно доступно сотруднику с `MANAGE_DINING_SESSION` как на
+  экране стола, так и в операционном блоке полностью оплаченных столов на
+  `/[locale]/admin/zahlungen`; финансовые записи при этом не изменяются.
+- После `CLOSED` тот же действующий QR-код может начать новое посещение:
+  первый новый заказ создаёт новую `DiningSession` и нового участника.
 
 ## 2. OrderRound
 
@@ -40,6 +44,13 @@ ACCEPTED/PARTIALLY_ACCEPTED/IN_PROGRESS/READY → CANCELLED
   `SUBMITTED`.
 - Переключение `reorderApprovalMode` влияет только на **будущие**
   раунды; уже созданные `OrderRound` не меняют статус ретроактивно.
+- Пока раунд находится в `SUBMITTED`, официант с `APPROVE_ORDER_ROUND` может
+  перед подтверждением изменить количество каждой выбранной позиции в
+  диапазоне 1–50. Клиент передаёт только item ID и количество; сервер заново
+  рассчитывает строку, налог, остаток и итог раунда из snapshot-цены. Правка
+  количества, решение, статусы позиций, создание ProductionTicket и
+  LifecycleEvent фиксируются одной optimistic транзакцией. После выхода из
+  `SUBMITTED` количество изменять нельзя.
 
 ## 3. OrderItem
 
@@ -54,6 +65,8 @@ ACCEPTED/IN_PREPARATION → CANCELLED   (ограниченно, аудируе�
 `READY`. Только после этого официант может выполнить «Serviert»: тикет
 `READY → HANDED_OFF`, позиция `READY → SERVED` в одной транзакции.
 Прямой Stage 2 путь из `ACCEPTED` больше не разрешён.
+Уменьшение количества до нуля не используется как скрытая отмена: минимум —
+1, для отказа от позиции официант снимает её чекбокс и указывает причину.
 
 ## 4. ProductionTicket
 
@@ -79,14 +92,29 @@ QUEUED/ACCEPTED/IN_PROGRESS → CANCELLED
 ```
 CREATED → PENDING → SUCCEEDED
 CREATED → PENDING → FAILED
+CREATED → SUCCEEDED/FAILED        (webhook обогнал локальную запись PENDING)
 CREATED/PENDING → CANCELLED
 SUCCEEDED → PARTIALLY_REFUNDED → REFUNDED
 ```
 
-Источник истины — Stripe webhook, не client redirect. `PENDING` = ждём
-webhook; `SUCCEEDED` создаётся только после верифицированного события.
+Для `STRIPE` источник истины — webhook, не client redirect. Для `CASH`
+`PENDING` означает ожидание подтверждения официантом; эту попытку может
+начать гость или сотрудник с `REGISTER_CASH_PAYMENT`. `SUCCEEDED` создаёт
+только staff action с тем же permission после фактического получения денег.
 
-## 6. Алгоритм submit OrderRound (обязательные 13 шагов, в одной транзакции где применимо)
+## 6. WaiterCall
+
+```
+OPEN → ACKNOWLEDGED → RESOLVED
+OPEN → RESOLVED
+OPEN/ACKNOWLEDGED → CANCELLED
+```
+
+Повторный guest-клик возвращает существующий активный вызов. Partial unique
+index запрещает два активных вызова одной DiningSession. Терминальные вызовы
+не возобновляются; новый вызов создаётся отдельной записью.
+
+## 7. Алгоритм submit OrderRound (обязательные 13 шагов, в одной транзакции где применимо)
 
 1. Разрешить активный стол по QR. Если активной `DiningSession` нет, первый
    гостевой заказ открывает её в той же транзакции (`actorType=GUEST`);
@@ -111,7 +139,7 @@ webhook; `SUCCEEDED` создаётся только после верифици
 13. Вернуть детерминированный результат при безопасном повторе запроса
     (тот же `OrderRound`, не новый).
 
-## 7. Аудит смены `reorderApprovalMode`
+## 8. Аудит смены `reorderApprovalMode`
 
 Каждое изменение сохраняет: `sessionId`, предыдущее значение, новое
 значение, `staffUserId`, время. Пишется в `AuditLog` и отражается в
@@ -119,9 +147,10 @@ staff UI заметно (баннер текущего режима на экр�
 `MANAGE_REORDER_APPROVAL` может менять; официант может вернуть
 `REQUIRE_WAITER` в любой момент.
 
-## 8. Тестовое покрытие (Этап 1-3+)
+## 9. Тестовое покрытие (Этап 1-5)
 
-После Этапа 3 проходят 221 unit-тест, включая валидные/невалидные переходы
+После добавления русской локали и admin close flow проходят 263 unit-теста,
+включая валидные/невалидные переходы
 DiningSession/OrderRound/OrderItem, правила первого раунда и
 `reorderApprovalMode`, а также server-side pricing и snapshot-суммы.
 Идемпотентность дополнительно защищена unique constraint
@@ -130,3 +159,7 @@ tests остаются обязательными перед production hardenin
 Этап 3 добавляет unit-тесты полного/недопустимого пути ProductionTicket,
 сопоставления Ticket→OrderItem, агрегирования OrderRound и reconnect merge
 очереди (full snapshot, delta, terminal tombstones).
+Этап 4 добавляет арифметику Bill/PaymentAllocation, защиту от переплаты,
+tax snapshot и переходы PaymentAttempt, включая ранний webhook.
+Этап 5 добавляет выбранные allocation plans, наличную сдачу и WaiterCall,
+включая запрет возобновления терминального вызова.

@@ -31,6 +31,7 @@ export default async function AdminLayout(props: {
           </p>
         </div>
         <form action={logoutAction}>
+          <input type="hidden" name="locale" value={locale} />
           <button
             type="submit"
             className="rounded-full border border-[var(--color-ink-700)] px-4 py-1.5 text-sm text-[var(--color-paper-dim)]"

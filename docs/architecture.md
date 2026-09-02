@@ -139,10 +139,15 @@ admin. Заказы/статусы/платежи/разрешения — вс�
 ## 11. Реализованные маршруты Этапов 2–3
 
 - Guest: `/[locale]` (меню, корзина, submit/status), `/t/[token]` (QR entry).
-- Service: `/[locale]/service`, `/[locale]/service/[sessionId]`.
+- Service: `/[locale]/service`, `/[locale]/service/[sessionId]`; защищённые
+  печатные представления внутренней полной ведомости и отдельной успешной
+  оплаты — `/[locale]/service/[sessionId]/druck[/[paymentId]]`.
 - Production: `/[locale]/produktion/kueche`, `/[locale]/produktion/bar`,
   `/api/production/queue`.
 - Realtime polling: `/api/live/guest`, `/api/live/service`.
+- Billing/Stripe: `/[locale]/bezahlen`, `/api/stripe/webhook`,
+  `/[locale]/admin/zahlungen`; server SDK импортируется только доменом
+  `payments/server`.
 - Admin tables/QR: `/[locale]/admin/tische`.
 - Маршруты Этапа 1 сохраняются: `/[locale]/anmelden`, `/[locale]/admin`,
   `/[locale]/admin/speisekarte`, `/api/health`, `/api/ready`.

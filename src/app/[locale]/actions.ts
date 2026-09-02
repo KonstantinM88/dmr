@@ -2,9 +2,15 @@
 
 import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { submitGuestOrder, submitOrderSchema } from '@/domains/orders/server/order.service';
 import type { SubmitOrderResult } from '@/domains/orders/shared/types';
 import { TABLE_TOKEN_COOKIE } from '@/lib/venue';
+import {
+  callWaiter,
+  cancelGuestWaiterCall,
+} from '@/domains/service-requests/server/waiter-call.service';
+import type { CallWaiterResult } from '@/domains/service-requests/shared/types';
 
 /**
  * Отправка заказа гостем. Единственная внешняя граница домена заказов для
@@ -25,4 +31,29 @@ export async function submitOrderAction(payload: unknown): Promise<SubmitOrderRe
   if (result.ok) revalidatePath('/[locale]', 'page');
 
   return result;
+}
+
+export async function callWaiterAction(): Promise<CallWaiterResult> {
+  const cookieStore = await cookies();
+  const result = await callWaiter({
+    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+  });
+  if (result.ok) {
+    revalidatePath('/[locale]', 'page');
+    revalidatePath('/[locale]/service', 'page');
+  }
+  return result;
+}
+
+export async function cancelWaiterCallAction(callId: string): Promise<{ ok: true }> {
+  const parsed = z.string().min(1).max(64).safeParse(callId);
+  if (!parsed.success) return { ok: true };
+  const cookieStore = await cookies();
+  await cancelGuestWaiterCall({
+    callId: parsed.data,
+    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+  });
+  revalidatePath('/[locale]', 'page');
+  revalidatePath('/[locale]/service', 'page');
+  return { ok: true };
 }

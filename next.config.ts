@@ -13,6 +13,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Playwright использует loopback-адрес, тогда как ручная разработка идёт
+  // через localhost. Разрешаем только этот дополнительный локальный origin.
+  allowedDevOrigins: ['127.0.0.1'],
   // Prisma + pg должны остаться внешними для серверного бандла.
   serverExternalPackages: ['@prisma/client', '@prisma/adapter-pg', 'pg'],
   async headers() {

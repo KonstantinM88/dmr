@@ -7,6 +7,9 @@ import {
   isSessionTerminal,
 } from '@/domains/sessions/server/session-state-machine';
 import type { ReorderApprovalMode, SessionStatus } from '@/domains/sessions/shared/types';
+import type { Prisma } from '@/generated/prisma/client';
+
+type TransactionClient = Prisma.TransactionClient;
 
 export type ActiveSession = {
   id: string;
@@ -17,6 +20,59 @@ export type ActiveSession = {
   reorderApprovalMode: ReorderApprovalMode;
   openedAt: Date;
 };
+
+export type PaidSessionAwaitingClose = {
+  id: string;
+  tableLabel: string;
+  openedAt: Date;
+  paidAt: Date;
+  totalGrossCents: number;
+  currency: string;
+};
+
+/** Полностью оплаченные сессии, которые ещё занимают физический стол. */
+export async function listPaidSessionsAwaitingClose(
+  venueId: string,
+): Promise<PaidSessionAwaitingClose[]> {
+  const sessions = await prisma.diningSession.findMany({
+    where: {
+      venueId,
+      status: 'PAID',
+      bills: { some: { status: 'PAID', remainingCents: 0 } },
+    },
+    orderBy: { openedAt: 'asc' },
+    select: {
+      id: true,
+      openedAt: true,
+      table: { select: { label: true } },
+      bills: {
+        where: { status: 'PAID', remainingCents: 0 },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          totalGrossCents: true,
+          currency: true,
+          closedAt: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  return sessions.flatMap((session) => {
+    const bill = session.bills[0];
+    if (!bill) return [];
+
+    return [{
+      id: session.id,
+      tableLabel: session.table.label,
+      openedAt: session.openedAt,
+      paidAt: bill.closedAt ?? bill.updatedAt,
+      totalGrossCents: bill.totalGrossCents,
+      currency: bill.currency,
+    }];
+  });
+}
 
 /** Активная (незавершённая) сессия стола или null. */
 export async function getActiveSessionForTable(tableId: string): Promise<ActiveSession | null> {
@@ -112,40 +168,53 @@ export async function transitionSession(
   actor: { staffUserId?: string; actorType: 'STAFF' | 'GUEST' | 'SYSTEM' },
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    const session = await tx.diningSession.findUniqueOrThrow({
-      where: { id: sessionId },
-      select: { status: true, venueId: true },
-    });
-
-    assertSessionTransition(session.status, to);
-
-    await tx.diningSession.update({
-      where: { id: sessionId },
-      data: {
-        status: to,
-        ...(to === 'CLOSED' || to === 'CANCELLED'
-          ? {
-              closedAt: new Date(),
-              closedByStaffUserId: actor.staffUserId ?? null,
-              // Режим не переживает закрытие сессии.
-              reorderApprovalMode: 'REQUIRE_WAITER',
-            }
-          : {}),
-      },
-    });
-
-    await recordLifecycleEvent(
-      {
-        entityType: 'DiningSession',
-        entityId: sessionId,
-        fromState: session.status,
-        toState: to,
-        actorType: actor.actorType,
-        actorId: actor.staffUserId ?? null,
-      },
-      tx,
-    );
+    await transitionSessionInTransaction(sessionId, to, actor, tx);
   });
+}
+
+/** Тот же переход внутри уже открытой доменной транзакции. */
+export async function transitionSessionInTransaction(
+  sessionId: string,
+  to: SessionStatus,
+  actor: { staffUserId?: string; actorType: 'STAFF' | 'GUEST' | 'SYSTEM' },
+  tx: TransactionClient,
+): Promise<void> {
+  const session = await tx.diningSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    select: { status: true },
+  });
+
+  assertSessionTransition(session.status, to);
+
+  const updated = await tx.diningSession.updateMany({
+    where: { id: sessionId, status: session.status },
+    data: {
+      status: to,
+      ...(to === 'CLOSED' || to === 'CANCELLED'
+        ? {
+            closedAt: new Date(),
+            closedByStaffUserId: actor.staffUserId ?? null,
+            reorderApprovalMode: 'REQUIRE_WAITER' as const,
+          }
+        : {}),
+    },
+  });
+
+  if (updated.count !== 1) {
+    throw new Error('Сессия была изменена параллельно; переход нужно повторить.');
+  }
+
+  await recordLifecycleEvent(
+    {
+      entityType: 'DiningSession',
+      entityId: sessionId,
+      fromState: session.status,
+      toState: to,
+      actorType: actor.actorType,
+      actorId: actor.staffUserId ?? null,
+    },
+    tx,
+  );
 }
 
 /**
@@ -193,6 +262,10 @@ export async function closeSession(
   sessionId: string,
   actor: { staffUserId: string; venueId: string; ip?: string },
 ): Promise<void> {
+  await prisma.diningSession.findFirstOrThrow({
+    where: { id: sessionId, venueId: actor.venueId, status: 'PAID' },
+    select: { id: true },
+  });
   await transitionSession(sessionId, 'CLOSED', {
     staffUserId: actor.staffUserId,
     actorType: 'STAFF',

@@ -1,9 +1,8 @@
 // DMR — Prisma schema.
-// Область Этапов 1–3: Venue, столы/QR, translation-first меню, налоги,
-// медиа, персонал/RBAC, сессии стола, заказы, производство и аудит.
-// Модели Этапа 4+
-// (биллинг, платежи) добавляются отдельными миграциями
-// по одобрению владельца.
+// Область Этапов 1–5: Venue, столы/QR, translation-first меню, налоги,
+// медиа, персонал/RBAC, сессии стола, заказы, производство, биллинг и
+// платежи, частичный расчёт и вызовы официанта. Чаевые/возвраты остаются
+// структурной основой без включённого flow до отдельной команды владельца.
 //
 // Правила (docs/data-model.md, docs/payment-model.md §2):
 //  - деньги — целые minor units (центы), поля *Cents, тип Int, валюта EUR;
@@ -103,6 +102,56 @@ enum StaffUserStatus {
   DISABLED
 }
 
+enum BillStatus {
+  DRAFT
+  OPEN
+  PAYMENT_PENDING
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum PaymentMethod {
+  STRIPE
+  CASH
+  TERMINAL
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum RefundStatus {
+  REQUESTED
+  SUCCEEDED
+  FAILED
+}
+
+enum ProviderEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum WaiterCallStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  CANCELLED
+}
+
 enum AuditActorType {
   STAFF
   SYSTEM
@@ -114,23 +163,23 @@ enum AuditActorType {
 // ---------------------------------------------------------------------------
 
 model Venue {
-  id             String   @id @default(cuid())
-  slug           String   @unique
-  name           String
-  defaultLocale  String   @default("de")
-  currency       String   @default("EUR")
-  timeZone       String   @default("Europe/Berlin")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  defaultLocale String   @default("de")
+  currency      String   @default("EUR")
+  timeZone      String   @default("Europe/Berlin")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  settings   VenueSetting[]
-  tables     DiningTable[]
-  categories MenuCategory[]
-  items      MenuItem[]
+  settings    VenueSetting[]
+  tables      DiningTable[]
+  categories  MenuCategory[]
+  items       MenuItem[]
   taxProfiles TaxProfile[]
-  stations   ProductionStation[]
-  staff      StaffUser[]
-  sessions   DiningSession[]
+  stations    ProductionStation[]
+  staff       StaffUser[]
+  sessions    DiningSession[]
 
   @@map("venues")
 }
@@ -159,9 +208,9 @@ model DiningTable {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  venue     Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  qrTokens  TableQrToken[]
-  sessions  DiningSession[]
+  venue    Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  qrTokens TableQrToken[]
+  sessions DiningSession[]
 
   @@unique([venueId, label])
   @@map("dining_tables")
@@ -192,7 +241,7 @@ model ProductionStation {
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 
-  venue      Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  venue      Venue              @relation(fields: [venueId], references: [id], onDelete: Cascade)
   items      MenuItem[]
   orderItems OrderItem[]
   tickets    ProductionTicket[]
@@ -261,32 +310,32 @@ model MenuCategoryTranslation {
 }
 
 model MenuItem {
-  id            String     @id @default(cuid())
-  venueId       String
-  categoryId    String
-  stationId     String?
-  taxProfileId  String?
-  slug          String
+  id             String     @id @default(cuid())
+  venueId        String
+  categoryId     String
+  stationId      String?
+  taxProfileId   String?
+  slug           String
   basePriceCents Int
-  isPublished   Boolean    @default(false)
-  isAvailable   Boolean    @default(true)
-  spiceLevel    SpiceLevel @default(NONE)
-  sortOrder     Int        @default(0)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  isPublished    Boolean    @default(false)
+  isAvailable    Boolean    @default(true)
+  spiceLevel     SpiceLevel @default(NONE)
+  sortOrder      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  venue        Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  category     MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  station      ProductionStation?    @relation(fields: [stationId], references: [id], onDelete: SetNull)
-  taxProfile   TaxProfile?           @relation(fields: [taxProfileId], references: [id], onDelete: SetNull)
-  translations MenuItemTranslation[]
-  variants     MenuVariant[]
+  venue          Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  category       MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  station        ProductionStation?    @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  taxProfile     TaxProfile?           @relation(fields: [taxProfileId], references: [id], onDelete: SetNull)
+  translations   MenuItemTranslation[]
+  variants       MenuVariant[]
   modifierGroups ModifierGroup[]
-  media        MediaAsset[]
-  allergens    MenuItemAllergen[]
-  additives    MenuItemAdditive[]
-  dietaryTags  MenuItemDietaryTag[]
-  orderItems   OrderItem[]
+  media          MediaAsset[]
+  allergens      MenuItemAllergen[]
+  additives      MenuItemAdditive[]
+  dietaryTags    MenuItemDietaryTag[]
+  orderItems     OrderItem[]
 
   @@unique([venueId, slug])
   @@index([categoryId, isPublished, sortOrder])
@@ -378,15 +427,15 @@ model ModifierGroupTranslation {
 }
 
 model ModifierOption {
-  id             String   @id @default(cuid())
-  groupId        String
-  slug           String
-  priceDeltaCents Int     @default(0)
-  isAvailable    Boolean  @default(true)
-  isDefault      Boolean  @default(false)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  groupId         String
+  slug            String
+  priceDeltaCents Int      @default(0)
+  isAvailable     Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   group        ModifierGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
   translations ModifierOptionTranslation[]
@@ -518,22 +567,22 @@ model MenuItemDietaryTag {
 // ---------------------------------------------------------------------------
 
 model MediaAsset {
-  id        String      @id @default(cuid())
-  itemId    String?
-  variantId String?
-  kind      MediaKind
-  status    MediaStatus @default(PROCESSING)
-  url       String
-  posterUrl String?
-  width     Int?
-  height    Int?
+  id         String      @id @default(cuid())
+  itemId     String?
+  variantId  String?
+  kind       MediaKind
+  status     MediaStatus @default(PROCESSING)
+  url        String
+  posterUrl  String?
+  width      Int?
+  height     Int?
   durationMs Int?
-  byteSize  Int?
-  mimeType  String?
-  altText   String?
-  sortOrder Int         @default(0)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  byteSize   Int?
+  mimeType   String?
+  altText    String?
+  sortOrder  Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   item    MenuItem?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
   variant MenuVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
@@ -547,24 +596,28 @@ model MediaAsset {
 // ---------------------------------------------------------------------------
 
 model StaffUser {
-  id            String          @id @default(cuid())
-  venueId       String
-  email         String          @unique
-  displayName   String
-  passwordHash  String
-  status        StaffUserStatus @default(ACTIVE)
-  totpEnabled   Boolean         @default(false)
-  failedLoginCount Int          @default(0)
-  lockedUntil   DateTime?
-  lastLoginAt   DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  venueId          String
+  email            String          @unique
+  displayName      String
+  passwordHash     String
+  status           StaffUserStatus @default(ACTIVE)
+  totpEnabled      Boolean         @default(false)
+  failedLoginCount Int             @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
-  venue           Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  roles           StaffUserRole[]
-  sessions        StaffSession[]
-  createdRounds   OrderRound[]
-  decidedRounds   OrderRoundDecision[]
+  venue                   Venue                @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  roles                   StaffUserRole[]
+  sessions                StaffSession[]
+  createdRounds           OrderRound[]
+  decidedRounds           OrderRoundDecision[]
+  cashSettlements         CashSettlement[]
+  requestedRefunds        Refund[]
+  acknowledgedWaiterCalls WaiterCall[]         @relation("WaiterCallAcknowledgedBy")
+  resolvedWaiterCalls     WaiterCall[]         @relation("WaiterCallResolvedBy")
 
   @@index([venueId, status])
   @@map("staff_users")
@@ -573,15 +626,15 @@ model StaffUser {
 /// Database-backed отзываемая сессия. В cookie — только tokenHash-совместимый
 /// селектор, сам секрет не хранится в открытом виде.
 model StaffSession {
-  id           String    @id @default(cuid())
-  staffUserId  String
-  tokenHash    String    @unique
-  issuedAt     DateTime  @default(now())
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  lastSeenAt   DateTime?
-  ipHash       String?
-  userAgent    String?
+  id          String    @id @default(cuid())
+  staffUserId String
+  tokenHash   String    @unique
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  lastSeenAt  DateTime?
+  ipHash      String?
+  userAgent   String?
 
   staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
 
@@ -663,6 +716,8 @@ model DiningSession {
   table        DiningTable          @relation(fields: [tableId], references: [id], onDelete: Restrict)
   participants SessionParticipant[]
   rounds       OrderRound[]
+  bills        Bill[]
+  waiterCalls  WaiterCall[]
 
   @@index([venueId, status, openedAt])
   @@index([tableId, status])
@@ -672,21 +727,44 @@ model DiningSession {
 /// Анонимный участник = одно устройство за столом. Персональных данных нет.
 /// В cookie кладётся секрет, в БД хранится только его SHA-256 хеш.
 model SessionParticipant {
-  id            String    @id @default(cuid())
-  sessionId     String
-  tokenHash     String    @unique
-  displayLabel  String?
-  seatLabel     String?
-  isStaffProxy  Boolean   @default(false)
-  joinedAt      DateTime  @default(now())
-  lastSeenAt    DateTime?
+  id           String    @id @default(cuid())
+  sessionId    String
+  tokenHash    String    @unique
+  displayLabel String?
+  seatLabel    String?
+  isStaffProxy Boolean   @default(false)
+  joinedAt     DateTime  @default(now())
+  lastSeenAt   DateTime?
 
-  session      DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session       DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   createdRounds OrderRound[]
-  orderItems   OrderItem[]
+  orderItems    OrderItem[]
 
   @@index([sessionId])
   @@map("session_participants")
+}
+
+/// Вызов официанта с гостевого QR. Активный вызов один на сессию — partial
+/// unique index находится в migration SQL, так как Prisma его не описывает.
+model WaiterCall {
+  id                        String           @id @default(cuid())
+  sessionId                 String
+  status                    WaiterCallStatus @default(OPEN)
+  requestedAt               DateTime         @default(now())
+  acknowledgedAt            DateTime?
+  resolvedAt                DateTime?
+  acknowledgedByStaffUserId String?
+  resolvedByStaffUserId     String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  session        DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  acknowledgedBy StaffUser?    @relation("WaiterCallAcknowledgedBy", fields: [acknowledgedByStaffUserId], references: [id], onDelete: SetNull)
+  resolvedBy     StaffUser?    @relation("WaiterCallResolvedBy", fields: [resolvedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, status, requestedAt])
+  @@index([updatedAt])
+  @@map("waiter_calls")
 }
 
 // ---------------------------------------------------------------------------
@@ -697,27 +775,27 @@ model SessionParticipant {
 /// `approvalMode` — snapshot режима на момент создания: последующее
 /// переключение режима не меняет уже созданные раунды ретроактивно.
 model OrderRound {
-  id                    String           @id @default(cuid())
-  sessionId             String
-  sequence              Int
-  status                OrderRoundStatus @default(SUBMITTED)
-  approvalMode          ReorderApprovalMode
-  isFirstRound          Boolean          @default(false)
+  id                     String              @id @default(cuid())
+  sessionId              String
+  sequence               Int
+  status                 OrderRoundStatus    @default(SUBMITTED)
+  approvalMode           ReorderApprovalMode
+  isFirstRound           Boolean             @default(false)
   /// Ключ идемпотентности от клиента: повтор возвращает тот же раунд.
-  clientRequestId       String
+  clientRequestId        String
   createdByParticipantId String?
-  createdByStaffUserId  String?
-  totalGrossCents       Int              @default(0)
-  submittedAt           DateTime         @default(now())
-  decidedAt             DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  createdByStaffUserId   String?
+  totalGrossCents        Int                 @default(0)
+  submittedAt            DateTime            @default(now())
+  decidedAt              DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  session       DiningSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant   SessionParticipant?  @relation(fields: [createdByParticipantId], references: [id], onDelete: SetNull)
-  staffUser     StaffUser?           @relation(fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  items         OrderItem[]
-  decisions     OrderRoundDecision[]
+  session     DiningSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant SessionParticipant?  @relation(fields: [createdByParticipantId], references: [id], onDelete: SetNull)
+  staffUser   StaffUser?           @relation(fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  items       OrderItem[]
+  decisions   OrderRoundDecision[]
 
   @@unique([sessionId, clientRequestId])
   @@unique([sessionId, sequence])
@@ -729,42 +807,44 @@ model OrderRound {
 /// Snapshot обязателен: изменение цены в меню после отправки не должно
 /// менять уже созданный заказ (docs/data-model.md §9).
 model OrderItem {
-  id                   String          @id @default(cuid())
-  roundId              String
+  id                     String          @id @default(cuid())
+  roundId                String
   orderedByParticipantId String?
-  menuItemId           String?
-  menuVariantId        String?
-  stationId            String?
-  status               OrderItemStatus @default(SUBMITTED)
-  seatLabel            String?
-  guestNote            String?
+  menuItemId             String?
+  menuVariantId          String?
+  stationId              String?
+  status                 OrderItemStatus @default(SUBMITTED)
+  seatLabel              String?
+  guestNote              String?
 
   /// --- immutable snapshot на момент заказа ---
-  nameSnapshot         String
-  variantNameSnapshot  String?
-  localeSnapshot       String
-  unitPriceCents       Int
-  quantity             Int
-  lineTotalCents       Int
-  taxRateBasisPoints   Int
-  taxAmountCents       Int
-  stationKindSnapshot  ProductionStationKind?
+  nameSnapshot        String
+  variantNameSnapshot String?
+  localeSnapshot      String
+  unitPriceCents      Int
+  quantity            Int
+  lineTotalCents      Int
+  taxRateBasisPoints  Int
+  taxAmountCents      Int
+  stationKindSnapshot ProductionStationKind?
 
   /// --- финансовая привязка (заполняется с Этапа 4) ---
-  allocatedPaidCents   Int             @default(0)
-  remainingCents       Int             @default(0)
+  allocatedPaidCents Int @default(0)
+  remainingCents     Int @default(0)
 
-  rejectedReason       String?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  rejectedReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  round       OrderRound          @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  participant SessionParticipant? @relation(fields: [orderedByParticipantId], references: [id], onDelete: SetNull)
-  menuItem    MenuItem?           @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
-  menuVariant MenuVariant?        @relation(fields: [menuVariantId], references: [id], onDelete: SetNull)
-  station     ProductionStation?  @relation(fields: [stationId], references: [id], onDelete: SetNull)
-  modifiers   OrderItemModifier[]
-  productionTicket ProductionTicket?
+  round                     OrderRound                 @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant               SessionParticipant?        @relation(fields: [orderedByParticipantId], references: [id], onDelete: SetNull)
+  menuItem                  MenuItem?                  @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  menuVariant               MenuVariant?               @relation(fields: [menuVariantId], references: [id], onDelete: SetNull)
+  station                   ProductionStation?         @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  modifiers                 OrderItemModifier[]
+  productionTicket          ProductionTicket?
+  allocations               PaymentAllocation[]
+  plannedPaymentAllocations PaymentAttemptAllocation[]
 
   @@index([roundId, status])
   @@map("order_items")
@@ -800,13 +880,13 @@ model ProductionTicket {
 
 /// Snapshot выбранного модификатора и его цены на момент заказа.
 model OrderItemModifier {
-  id                  String   @id @default(cuid())
-  orderItemId         String
-  modifierOptionId    String?
-  groupTitleSnapshot  String
-  nameSnapshot        String
-  priceDeltaCents     Int
-  createdAt           DateTime @default(now())
+  id                 String   @id @default(cuid())
+  orderItemId        String
+  modifierOptionId   String?
+  groupTitleSnapshot String
+  nameSnapshot       String
+  priceDeltaCents    Int
+  createdAt          DateTime @default(now())
 
   orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
@@ -816,14 +896,14 @@ model OrderItemModifier {
 
 /// Решение официанта по раунду. Append-only: история решений не переписывается.
 model OrderRoundDecision {
-  id            String           @id @default(cuid())
-  roundId       String
-  staffUserId   String?
-  decision      OrderRoundStatus
+  id              String           @id @default(cuid())
+  roundId         String
+  staffUserId     String?
+  decision        OrderRoundStatus
   acceptedItemIds String[]
   rejectedItemIds String[]
-  note          String?
-  createdAt     DateTime         @default(now())
+  note            String?
+  createdAt       DateTime         @default(now())
 
   round     OrderRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
   staffUser StaffUser? @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
@@ -833,21 +913,248 @@ model OrderRoundDecision {
 }
 
 // ---------------------------------------------------------------------------
+// Биллинг и платежи (Этапы 4–5)
+//
+// Принцип: НЕТ поля `paid: boolean`. Статус оплаты вычисляется из
+// PaymentAllocation и остатков позиций (docs/payment-model.md §1).
+// ---------------------------------------------------------------------------
+
+/// Счёт сессии. Суммы пересчитываются на сервере перед каждой попыткой
+/// оплаты и не принимаются от клиента.
+model Bill {
+  id                     String     @id @default(cuid())
+  sessionId              String     @unique
+  status                 BillStatus @default(OPEN)
+  currency               String     @default("EUR")
+  /// Сумма принятых и ещё не оплаченных позиций на момент пересчёта.
+  totalGrossCents        Int        @default(0)
+  paidCents              Int        @default(0)
+  remainingCents         Int        @default(0)
+  taxTotalCents          Int        @default(0)
+  requestedAt            DateTime?
+  requestedByStaffUserId String?
+  closedAt               DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  session         DiningSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attempts        PaymentAttempt[]
+  payments        Payment[]
+  cashSettlements CashSettlement[]
+
+  @@index([sessionId, status])
+  @@map("bills")
+}
+
+/// Попытка оплаты. Может завершиться неуспехом — это нормальный исход,
+/// а не ошибка приложения. `providerRef` = Stripe PaymentIntent id.
+model PaymentAttempt {
+  id                     String               @id @default(cuid())
+  billId                 String
+  method                 PaymentMethod        @default(STRIPE)
+  status                 PaymentAttemptStatus @default(CREATED)
+  amountCents            Int
+  currency               String               @default("EUR")
+  providerRef            String?              @unique
+  /// Ключ идемпотентности, отправленный провайдеру: повторный клик не
+  /// создаёт второй PaymentIntent.
+  idempotencyKey         String               @unique
+  /// Временное резервирование остатка на время попытки; освобождается при
+  /// провале или по таймауту (основа частичных оплат Этапа 5).
+  reservedUntil          DateTime?
+  failureCode            String?
+  createdByParticipantId String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  bill               Bill                       @relation(fields: [billId], references: [id], onDelete: Cascade)
+  payment            Payment?
+  plannedAllocations PaymentAttemptAllocation[]
+
+  @@index([billId, status])
+  @@map("payment_attempts")
+}
+
+/// Неизменяемый план распределения активной попытки. Он резервирует
+/// выбранные позиции до webhook Stripe или подтверждения наличных официантом.
+model PaymentAttemptAllocation {
+  id                     String   @id @default(cuid())
+  attemptId              String
+  orderItemId            String
+  /// Количество целых единиц строки, зарезервированных этой попыткой.
+  quantity               Int
+  amountCents            Int
+  /// Остаток строки при создании плана для optimistic concurrency.
+  expectedRemainingCents Int
+  createdAt              DateTime @default(now())
+
+  attempt   PaymentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  orderItem OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([attemptId, orderItemId])
+  @@index([orderItemId])
+  @@map("payment_attempt_allocations")
+}
+
+/// Факт успешной оплаты. Для Stripe создаётся только из webhook; для CASH —
+/// только подтверждающим staff action, никогда из guest/client redirect.
+model Payment {
+  id              String        @id @default(cuid())
+  billId          String
+  attemptId       String        @unique
+  method          PaymentMethod @default(STRIPE)
+  status          PaymentStatus @default(SUCCEEDED)
+  amountCents     Int
+  currency        String        @default("EUR")
+  providerRef     String?
+  providerEventId String?
+  receivedAt      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  bill           Bill                @relation(fields: [billId], references: [id], onDelete: Restrict)
+  attempt        PaymentAttempt      @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  allocations    PaymentAllocation[]
+  refunds        Refund[]
+  tips           Tip[]
+  cashSettlement CashSettlement?
+
+  @@index([billId, status])
+  @@map("payments")
+}
+
+/// Распределение платежа по позициям. Уникальность пары (payment, item)
+/// плюс проверка остатка в сервисе не дают оплатить позицию дважды или
+/// уйти в отрицательный остаток.
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String
+  orderItemId String
+  /// Фактически оплаченное количество целых единиц строки.
+  quantity    Int
+  amountCents Int
+  createdAt   DateTime @default(now())
+
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, orderItemId])
+  @@index([orderItemId])
+  @@map("payment_allocations")
+}
+
+/// Сырое событие провайдера. `providerEventId` уникален — повторная
+/// доставка одного и того же webhook не создаёт второй Payment.
+model PaymentProviderEvent {
+  id                     String              @id @default(cuid())
+  provider               String              @default("stripe")
+  providerEventId        String              @unique
+  eventType              String
+  status                 ProviderEventStatus @default(RECEIVED)
+  payloadDigest          String?
+  relatedPaymentIntentId String?
+  processedAt            DateTime?
+  failureReason          String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([eventType, createdAt])
+  @@index([relatedPaymentIntentId])
+  @@map("payment_provider_events")
+}
+
+/// Возврат. Модель заведена в Этапе 4, flow — Этап 5.
+model Refund {
+  id                     String       @id @default(cuid())
+  paymentId              String
+  status                 RefundStatus @default(REQUESTED)
+  amountCents            Int
+  reason                 String?
+  providerRef            String?
+  requestedByStaffUserId String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  payment   Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  staffUser StaffUser? @relation(fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId, status])
+  @@map("refunds")
+}
+
+/// Чаевые. Модель заведена в Этапе 4, flow — Этап 5.
+model Tip {
+  id          String   @id @default(cuid())
+  paymentId   String
+  amountCents Int
+  currency    String   @default("EUR")
+  createdAt   DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("tips")
+}
+
+/// Наличный/терминальный расчёт. Регистрирует только сотрудник с
+/// REGISTER_CASH_PAYMENT; гость не может пометить счёт оплаченным.
+/// Flow наличных включён в согласованной части Этапа 5.
+model CashSettlement {
+  id            String        @id @default(cuid())
+  billId        String
+  paymentId     String        @unique
+  method        PaymentMethod @default(CASH)
+  amountCents   Int
+  receivedCents Int
+  changeCents   Int           @default(0)
+  currency      String        @default("EUR")
+  note          String?
+  staffUserId   String?
+  createdAt     DateTime      @default(now())
+
+  staffUser StaffUser? @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
+  bill      Bill       @relation(fields: [billId], references: [id], onDelete: Restrict)
+  payment   Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([billId, createdAt])
+  @@map("cash_settlements")
+}
+
+/// Append-only журнал финансовых операций, отдельно от общего AuditLog.
+model FinancialAuditEvent {
+  id          String         @id @default(cuid())
+  venueId     String?
+  billId      String?
+  paymentId   String?
+  action      String
+  actorType   AuditActorType @default(SYSTEM)
+  actorId     String?
+  amountCents Int?
+  currency    String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  @@index([venueId, createdAt])
+  @@index([billId, createdAt])
+  @@map("financial_audit_events")
+}
+
+// ---------------------------------------------------------------------------
 // Аудит (append-only: только create/read)
 // ---------------------------------------------------------------------------
 
 model AuditLog {
-  id          String         @id @default(cuid())
-  venueId     String?
-  actorType   AuditActorType @default(STAFF)
-  actorId     String?
-  action      String
-  entityType  String
-  entityId    String?
+  id            String         @id @default(cuid())
+  venueId       String?
+  actorType     AuditActorType @default(STAFF)
+  actorId       String?
+  action        String
+  entityType    String
+  entityId      String?
   previousValue Json?
-  newValue    Json?
-  ipHash      String?
-  createdAt   DateTime       @default(now())
+  newValue      Json?
+  ipHash        String?
+  createdAt     DateTime       @default(now())
 
   @@index([venueId, createdAt])
   @@index([entityType, entityId])

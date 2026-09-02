@@ -10,6 +10,7 @@ import { PrismaClient } from '../src/generated/prisma/client.js';
 import { hashPassword, generateOpaqueToken } from '../src/lib/hash.js';
 import { ROLE_PERMISSIONS, PERMISSIONS, PERMISSION_DESCRIPTIONS, ROLE_LABELS } from '../src/domains/staff/shared/permissions.js';
 import type { Permission, RoleCode } from '../src/domains/staff/shared/permissions.js';
+import { seedRussianTranslations } from './seed-russian-translations.js';
 
 const connectionString = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DIRECT_DATABASE_URL или DATABASE_URL обязателен для сида.');
@@ -418,6 +419,8 @@ async function main() {
       });
     }
   }
+
+  await seedRussianTranslations(prisma, venue.id);
 
   // Столы и QR-токены: токен выпускается только если активного ещё нет.
   const issuedTokens: Array<{ label: string; token: string }> = [];

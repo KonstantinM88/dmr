@@ -18,7 +18,7 @@ const envSchema = z.object({
     .string()
     .min(32, 'STAFF_SESSION_SECRET должен быть не короче 32 символов'),
 
-  // Этап 4. На Этапе 1 допустимо пустое значение.
+  // Этап 4. Пустые значения = онлайн-оплата выключена fail-closed.
   STRIPE_SECRET_KEY: z.string().default(''),
   STRIPE_PUBLISHABLE_KEY: z.string().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().default(''),
@@ -69,6 +69,32 @@ function parseEnv(): Env {
     }
   }
 
+  const stripeValues = [
+    value.STRIPE_SECRET_KEY,
+    value.STRIPE_PUBLISHABLE_KEY,
+    value.STRIPE_WEBHOOK_SECRET,
+  ];
+  const configuredStripeValues = stripeValues.filter((entry) => entry !== '').length;
+
+  if (configuredStripeValues !== 0 && configuredStripeValues !== stripeValues.length) {
+    throw new Error(
+      'Stripe должен быть настроен полностью: нужны STRIPE_SECRET_KEY, ' +
+        'STRIPE_PUBLISHABLE_KEY и STRIPE_WEBHOOK_SECRET, либо все три значения пустые.',
+    );
+  }
+
+  if (configuredStripeValues === stripeValues.length) {
+    if (!value.STRIPE_SECRET_KEY.startsWith('sk_test_')) {
+      throw new Error('Этап 4 разрешает только Stripe test mode (STRIPE_SECRET_KEY=sk_test_…).');
+    }
+    if (!value.STRIPE_PUBLISHABLE_KEY.startsWith('pk_test_')) {
+      throw new Error('Этап 4 разрешает только Stripe test mode (STRIPE_PUBLISHABLE_KEY=pk_test_…).');
+    }
+    if (!value.STRIPE_WEBHOOK_SECRET.startsWith('whsec_')) {
+      throw new Error('STRIPE_WEBHOOK_SECRET должен быть отдельным секретом webhook (whsec_…).');
+    }
+  }
+
   return value;
 }
 
@@ -80,5 +106,9 @@ export function getEnv(): Env {
 /** Признак того, что Stripe сконфигурирован (Этап 4). */
 export function isStripeConfigured(): boolean {
   const env = getEnv();
-  return env.STRIPE_SECRET_KEY !== '' && env.STRIPE_WEBHOOK_SECRET !== '';
+  return (
+    env.STRIPE_SECRET_KEY !== '' &&
+    env.STRIPE_PUBLISHABLE_KEY !== '' &&
+    env.STRIPE_WEBHOOK_SECRET !== ''
+  );
 }

@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { mergeWithFallback, type MessageTree } from '@/domains/localization/shared/messages';
 import { loadMessages } from '@/domains/localization/shared/messages';
 import de from '@/domains/localization/messages/de.json';
+import ru from '@/domains/localization/messages/ru.json';
+import { isSupportedLocale, locales } from '@/i18n/routing';
+
+const flatten = (tree: MessageTree, prefix = ''): string[] =>
+  Object.entries(tree).flatMap(([key, value]) =>
+    typeof value === 'string'
+      ? [`${prefix}${key}`]
+      : flatten(value, `${prefix}${key}.`),
+  );
+
+function expectCompleteCatalog(tree: MessageTree): void {
+  for (const value of Object.values(tree)) {
+    if (typeof value === 'string') {
+      expect(value.trim()).not.toBe('');
+      expect(value.toLowerCase()).not.toContain('missing translation');
+      expect(value).not.toMatch(/^TODO/i);
+    } else {
+      expectCompleteCatalog(value);
+    }
+  }
+}
 
 describe('fallback переводов', () => {
   it('неполный перевод откатывается на немецкий текст, а не на ключ', () => {
@@ -32,26 +53,8 @@ describe('fallback переводов', () => {
 });
 
 describe('каталог de', () => {
-  const flatten = (tree: MessageTree, prefix = ''): string[] =>
-    Object.entries(tree).flatMap(([key, value]) =>
-      typeof value === 'string'
-        ? [`${prefix}${key}`]
-        : flatten(value, `${prefix}${key}.`),
-    );
-
   it('не содержит пустых значений и заглушек', () => {
-    const walk = (tree: MessageTree): void => {
-      for (const value of Object.values(tree)) {
-        if (typeof value === 'string') {
-          expect(value.trim()).not.toBe('');
-          expect(value.toLowerCase()).not.toContain('missing translation');
-          expect(value).not.toMatch(/^TODO/i);
-        } else {
-          walk(value);
-        }
-      }
-    };
-    walk(de as MessageTree);
+    expectCompleteCatalog(de as MessageTree);
   });
 
   it('содержит все обязательные UI-состояния из product-spec §5', () => {
@@ -82,5 +85,22 @@ describe('каталог de', () => {
     ];
 
     for (const key of required) expect(keys).toContain(key);
+  });
+});
+
+describe('каталог ru', () => {
+  it('публично включает русский язык', () => {
+    expect(locales).toEqual(['de', 'ru']);
+    expect(isSupportedLocale('ru')).toBe(true);
+  });
+
+  it('не содержит пустых значений и имеет те же ключи, что de', () => {
+    expectCompleteCatalog(ru as MessageTree);
+    expect(flatten(ru as MessageTree).sort()).toEqual(flatten(de as MessageTree).sort());
+  });
+
+  it('загружает русский каталог без немецкого fallback для переведённых ключей', async () => {
+    const messages = await loadMessages('ru') as { menu: { title: string } };
+    expect(messages.menu.title).toBe('Меню');
   });
 });

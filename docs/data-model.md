@@ -30,6 +30,9 @@
   device-scoped secret в HttpOnly-cookie, в БД только `tokenHash`, optional
   `displayLabel`/`seatLabel`, без персональных данных; связь используется для
   «мои позиции», не единственный источник истины для владения позицией.
+- **WaiterCall** — гостевой вызов сервиса: `OPEN → ACKNOWLEDGED → RESOLVED`
+  либо `CANCELLED`, timestamps принятия/завершения и staff actor. Partial
+  unique index допускает только один активный вызов на DiningSession.
 
 ## 3. Меню (translation-first, НЕ nameDe/nameEn/nameRu-поля)
 
@@ -60,14 +63,21 @@
   `clientRequestId` (идемпотентность уникальна внутри session), guest/staff
   actor, `totalGrossCents`, timestamps submit/decision.
 - **OrderItem** — позиция раунда: `orderedByParticipantId`, `seatLabel?`,
-  immutable product snapshot (название/вариант/модификаторы/цена/налог на
-  момент заказа), `quantity`, `unitPriceCents`, `lineTotalCents`, station и
+  immutable product snapshot (название/вариант/модификаторы/unit price/ставка
+  налога на момент заказа), `quantity`, `unitPriceCents`, `lineTotalCents`, station и
   station-kind snapshots, `allocatedPaidCents`, `remainingCents`, статус и
   optional причина отказа (см. state machines).
+  Пока позиция остаётся `SUBMITTED`, сотрудник с `APPROVE_ORDER_ROUND` может
+  изменить только `quantity` в диапазоне 1–50 в составе решения по раунду.
+  Сервер пересчитывает `lineTotalCents`, `taxAmountCents`, `remainingCents` и
+  `OrderRound.totalGrossCents` из сохранённых snapshot-цены и ставки. После
+  подтверждения количество снова неизменяемо.
 - **OrderItemModifier** — snapshot выбранных модификаторов + их цена на
   момент заказа.
 - **OrderRoundDecision** — append-only решение сотрудника: итоговый status,
   массивы принятых/отклонённых item ids, optional note, staff actor и время.
+  Изменения количества сохраняются в metadata транзакционного LifecycleEvent
+  и в AuditLog решения (старое/новое значение).
 
 ## 5. Производство
 
@@ -82,21 +92,34 @@
 
 ## 6. Финансы (разделено, НЕ `paid: boolean`)
 
-- **Bill/Check** — `sessionId`, агрегированная сумма к оплате, статус
-  вычисляется из allocations, не из UI-флага.
+- **Bill/Check** — ровно один на `DiningSession` (`sessionId` unique),
+  агрегированная сумма к оплате; статус вычисляется из allocations, не из
+  UI-флага. Неизменившийся пересчёт не пишет лишний `updatedAt`.
 - **PaymentAttempt** — попытка оплаты (может быть неуспешной), `billId`,
   сумма, метод, `providerRef` (Stripe PaymentIntent id), временное
   резервирование позиций/суммы на время попытки (для будущей частичной
-  оплаты — резервирование освобождается по таймауту).
+  оплаты — резервирование освобождается по таймауту). Partial unique index
+  допускает не более одной активной (`CREATED`/`PENDING`) попытки на Bill.
+- **PaymentAttemptAllocation** — неизменяемый план выбранных позиций,
+  количества целых единиц (`quantity`) и серверно рассчитанных сумм,
+  резервируемый до подтверждения Stripe webhook или наличных сотрудником.
+  `expectedRemainingCents` фиксирует остаток строки при создании плана для
+  optimistic concurrency. Guest передаёт ids строк, staff — ids и quantity;
+  цену и сумму клиент не передаёт.
 - **Payment** — успешный факт оплаты, ссылается на `PaymentAttempt`.
-- **PaymentAllocation** — распределение `Payment` по конкретным
-  `OrderItem`/суммам; защищает от двойной оплаты позиции, оплаты выше
+- **PaymentAllocation** — распределение `Payment` по конкретным `OrderItem`,
+  фактически оплаченному `quantity` и суммам; защищает от двойной оплаты позиции, оплаты выше
   остатка, отрицательного остатка, гонки двух `PaymentAttempt` за одну и
   ту же сумму.
 - **PaymentProviderEvent** — сырые события Stripe webhook,
-  `providerEventId` уникален (идемпотентность повторной доставки).
-- **Refund**, **Tip**, **CashSettlement** — заложены в MVP-схему, UI/flow
-  — Этап 5.
+  `providerEventId` уникален. Состояния `RECEIVED/PROCESSING/PROCESSED/
+  IGNORED/FAILED` и lease по `updatedAt` позволяют повторить событие после
+  временного сбоя, но не обработать его параллельно.
+- **CashSettlement** — подтверждённый сотрудником наличный расчёт со ссылкой
+  на `Payment`, полученной суммой и сдачей. Guest создаёт только ожидающую
+  попытку и не может сам отметить позиции оплаченными.
+- **Refund**, **Tip** — заложены в схему; UI/flow остаётся будущей частью
+  Этапа 5.
 - **FinancialAuditEvent** — append-only журнал финансовых операций.
 
 ## 7. Staff/RBAC
@@ -111,7 +134,7 @@
 - **AuditLog** — общий append-only журнал административных/staff действий
   (включая смену `reorderApprovalMode`).
 - **LifecycleEvent** — append-only журнал переходов state machines
-  (DiningSession/OrderRound/OrderItem/ProductionTicket/Payment), пишется
+  (DiningSession/OrderRound/OrderItem/ProductionTicket/Payment/WaiterCall), пишется
   в той же транзакции, что и переход.
 - **OutboxEvent** — при необходимости для фоновой обработки без
   выделенного worker (см. `architecture.md` §7).

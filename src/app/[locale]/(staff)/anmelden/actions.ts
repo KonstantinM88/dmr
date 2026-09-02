@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { login, loginSchema } from '@/domains/staff/server/auth.service';
 import { revokeCurrentStaffSession } from '@/domains/staff/server/session.service';
-import { defaultLocale } from '@/i18n/routing';
+import { defaultLocale, isSupportedLocale } from '@/i18n/routing';
 
 export type LoginFormState = {
   error: 'invalid_credentials' | 'locked' | 'rate_limited' | 'invalid_input' | null;
@@ -18,6 +18,11 @@ export async function loginAction(
   _prev: LoginFormState,
   formData: FormData,
 ): Promise<LoginFormState> {
+  const requestedLocale = formData.get('locale');
+  const locale =
+    typeof requestedLocale === 'string' && isSupportedLocale(requestedLocale)
+      ? requestedLocale
+      : defaultLocale;
   const parsed = loginSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
@@ -33,10 +38,15 @@ export async function loginAction(
 
   if (!result.ok) return { error: result.reason };
 
-  redirect(`/${defaultLocale}/admin`);
+  redirect(`/${locale}/admin`);
 }
 
-export async function logoutAction(): Promise<void> {
+export async function logoutAction(formData: FormData): Promise<void> {
+  const requestedLocale = formData.get('locale');
+  const locale =
+    typeof requestedLocale === 'string' && isSupportedLocale(requestedLocale)
+      ? requestedLocale
+      : defaultLocale;
   await revokeCurrentStaffSession();
-  redirect(`/${defaultLocale}/anmelden`);
+  redirect(`/${locale}/anmelden`);
 }

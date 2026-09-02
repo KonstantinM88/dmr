@@ -1,7 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
-import { requireStaff } from '@/domains/staff/server/rbac';
-import { ROLE_LABELS, type RoleCode } from '@/domains/staff/shared/permissions';
+import { getStaffPrincipal } from '@/domains/staff/server/session.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +9,19 @@ export default async function AdminHomePage(props: { params: Promise<{ locale: s
   const { locale } = await props.params;
   setRequestLocale(locale);
 
-  const principal = await requireStaff();
+  // Layout и page могут рендериться параллельно. Поэтому page самостоятельно
+  // делает тихий redirect, а не выбрасывает AuthenticationRequiredError до
+  // того, как redirect из layout успеет остановить анонимный запрос.
+  const principal = await getStaffPrincipal();
+  if (!principal) redirect(`/${locale}/anmelden`);
   const t = await getTranslations('admin');
+  const tRoles = await getTranslations('roles');
 
   const sections = [
     { href: '/admin/speisekarte', label: t('menu'), permission: 'MANAGE_MENU' as const },
     { href: '/admin/tische', label: t('tables'), permission: 'MANAGE_TABLES_QR' as const },
     { href: '/service', label: t('service'), permission: 'VIEW_ASSIGNED_TABLES' as const },
+    { href: '/admin/zahlungen', label: t('payments'), permission: 'VIEW_PAYMENTS' as const },
     { href: '/produktion/kueche', label: t('kitchen'), permission: 'VIEW_KITCHEN_QUEUE' as const },
     { href: '/produktion/bar', label: t('bar'), permission: 'VIEW_BAR_QUEUE' as const },
   ];
@@ -28,7 +34,7 @@ export default async function AdminHomePage(props: { params: Promise<{ locale: s
             key={role}
             className="rounded-full bg-[var(--color-ink-850)] px-3 py-1 font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]"
           >
-            {ROLE_LABELS[role as RoleCode] ?? role}
+            {tRoles(role)}
           </li>
         ))}
       </ul>

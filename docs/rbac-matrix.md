@@ -10,12 +10,12 @@
 | --- | --- |
 | `VIEW_ASSIGNED_TABLES` | видеть назначенные столы/сессии |
 | `MANAGE_DINING_SESSION` | открывать/закрывать сессию (в разрешённых случаях) |
-| `APPROVE_ORDER_ROUND` | подтверждать/отклонять OrderRound |
+| `APPROVE_ORDER_ROUND` | подтверждать/отклонять OrderRound и менять quantity его SUBMITTED-позиций |
 | `CREATE_MANUAL_ORDER` | создавать ручной заказ от лица официанта |
 | `MANAGE_REORDER_APPROVAL` | менять `reorderApprovalMode` сессии |
 | `MARK_ITEM_SERVED` | отмечать подачу позиции |
 | `REQUEST_PAYMENT` | инициировать запрос оплаты счёта |
-| `REGISTER_CASH_PAYMENT` | регистрировать наличный/терминальный платёж (Этап 5) |
+| `REGISTER_CASH_PAYMENT` | начинать, подтверждать и отменять наличный платёж (Этап 5) |
 | `VIEW_KITCHEN_QUEUE` / `VIEW_BAR_QUEUE` | видеть производственную очередь |
 | `MANAGE_PRODUCTION_TICKET` | принимать/менять статус тикета своей станции |
 | `MANAGE_MENU` | категории/позиции/цены/availability |
@@ -68,6 +68,30 @@ ACCOUNTANT не управляет кухонной/барной очередь�
 С Этапа 3 station scope проверяется дважды: queue route/server action требуют
 соответствующее `VIEW_KITCHEN_QUEUE` либо `VIEW_BAR_QUEUE`, а production
 domain service повторно сверяет `venueId` и `station.kind` самого тикета.
+
+Изменение количества является частью `APPROVE_ORDER_ROUND`, а не отдельным
+неаудируемым редактированием заказа. Domain service повторно проверяет
+`venueId`, статус `SUBMITTED`, полный набор item ID, уникальность ID и предел
+1–50; цены и суммы из клиента не принимает.
+
+С Этапа 5 `VIEW_ASSIGNED_TABLES` разрешает принять/завершить WaiterCall
+только внутри venue сотрудника. Создать или отменить гостевой вызов можно
+только с действующим QR-cookie этого стола. `REGISTER_CASH_PAYMENT` отдельно
+обязателен для прямого staff-запуска, подтверждения и отмены наличной
+PaymentAttempt; permission также разрешает выбрать целое оплачиваемое
+quantity в пределах неоплаченного количества строки. Guest никогда не создаёт
+`Payment` или `CashSettlement` напрямую. Все staff-операции дополнительно
+ограничены `venueId` сотрудника.
+
+То же `VIEW_ASSIGNED_TABLES` открывает read-only печатные представления
+внутренней полной платёжной ведомости и конкретной успешной оплаты только для
+сессии из venue сотрудника. Это не даёт права менять финансовые записи;
+регистрация наличных по-прежнему требует `REGISTER_CASH_PAYMENT`.
+
+Экран `/[locale]/admin/zahlungen` показывает read-only финансовый отчёт по
+`VIEW_PAYMENTS`/`VIEW_TAX_REPORTS`. Операционная кнопка закрытия уже полностью
+оплаченной `DiningSession` показывается отдельно и на сервере требует
+`MANAGE_DINING_SESSION`; она не меняет `Bill`, `Payment` или allocations.
 
 ## 3. Аутентификация
 

@@ -8,6 +8,7 @@ type FormState = {
 };
 
 type Props = {
+  locale: string;
   action: (state: FormState, formData: FormData) => Promise<FormState>;
 };
 
@@ -18,12 +19,13 @@ const ERROR_KEYS: Record<NonNullable<FormState['error']>, string> = {
   rate_limited: 'rateLimited',
 };
 
-export function LoginForm({ action }: Props) {
+export function LoginForm({ locale, action }: Props) {
   const t = useTranslations('staff.login');
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, { error: null });
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="locale" value={locale} />
       <div>
         <label htmlFor="email" className="eyebrow block">
           {t('email')}

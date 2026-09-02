@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server';
 import { Bricolage_Grotesque, Karla, IBM_Plex_Mono } from 'next/font/google';
 import { locales, isSupportedLocale } from '@/i18n/routing';
+import { LocaleSwitcher } from '@/components/localization/LocaleSwitcher';
 import '@/app/globals.css';
 
 const display = Bricolage_Grotesque({
@@ -49,12 +50,20 @@ export default async function LocaleLayout(props: {
   if (!isSupportedLocale(locale)) notFound();
 
   setRequestLocale(locale);
-  const messages = await getMessages();
+  const [messages, tCommon] = await Promise.all([
+    getMessages(),
+    getTranslations('common'),
+  ]);
 
   return (
     <html lang={locale} className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body className="min-h-dvh antialiased">
-        <NextIntlClientProvider messages={messages}>{props.children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          <div className="mx-auto flex w-full max-w-4xl justify-end px-5 pt-3">
+            <LocaleSwitcher label={tCommon('language')} />
+          </div>
+          {props.children}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -19,7 +19,7 @@ export default async function StaffLoginPage(props: { params: Promise<{ locale: 
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-5">
       <h1 className="font-[family-name:var(--font-display)] text-2xl">{t('title')}</h1>
       <div className="mt-6">
-        <LoginForm action={loginAction} />
+        <LoginForm locale={locale} action={loginAction} />
       </div>
     </main>
   );

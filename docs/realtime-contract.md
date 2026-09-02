@@ -11,8 +11,8 @@ polling fallback. SSE-интерфейс остаётся архитектурн
 | Consumer | Endpoint | Интервал active/hidden | Данные |
 | --- | --- | --- | --- |
 | Kitchen/Bar | `GET /api/production/queue?kind=…&cursor=…` | 3/10 c | Изменённые после cursor тикеты; terminal статусы служат tombstones |
-| Waiter | `GET /api/live/service?cursor=…` | 4/15 c | Только `changed` + новый cursor; RSC refresh выполняется при изменении |
-| Guest | `GET /api/live/guest?cursor=…` | 8/15 c | Только `changed` + новый cursor по заказам и availability меню |
+| Waiter | `GET /api/live/service?cursor=…` | 4/15 c | Изменения сессий, заказов, Bill/PaymentAttempt и WaiterCall; ответ `changed` запускает RSC refresh |
+| Guest | `GET /api/live/guest?cursor=…` | 8/15 c (на оплате 3/15 c) | Изменения меню, заказов, Bill/PaymentAttempt и WaiterCall текущего QR-стола |
 
 Все ответы `private, no-store`. Cursor — ISO timestamp snapshot-а БД;
 запрос выбирает `updatedAt > cursor AND updatedAt <= snapshotAt`, затем

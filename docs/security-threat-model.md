@@ -15,7 +15,7 @@
 | --- | --- |
 | Перебор/угадывание номера стола через QR URL | `TableQrToken` — непрогнозируемый opaque token, не последовательный ID; отзыв и ротация без пересоздания стола |
 | Массовые ложные заказы с одного стола/устройства | Rate limiting на submit OrderRound по participant+table, идемпотентность через `clientRequestId` |
-| Подделка цены на клиенте | Сервер всегда пересчитывает по БД (см. `order-state-machines.md` §6), клиентская цена — только preview |
+| Подделка цены на клиенте | Сервер всегда пересчитывает по БД (см. `order-state-machines.md` §7), клиентская цена — только preview |
 | CSRF на server actions/mutations | Next.js server actions + explicit origin check / CSRF token на custom API routes |
 | XSS через описание блюда/отзыв | Экранирование по умолчанию (React), Zod-валидация на входе, без `dangerouslySetInnerHTML` для пользовательского контента |
 | Открытая переадресация через QR/redirect параметры | Whitelist разрешённых internal-путей для redirect, без произвольного `next=` из query |
@@ -23,8 +23,16 @@
 | Брутфорс staff-логина | Rate limiting + временная блокировка после N попыток, audit входов |
 | Кража/переиспользование session cookie | HttpOnly + Secure + SameSite, database-backed revocable session, ротация при логине |
 | Поддельный Stripe webhook | Обязательная проверка подписи (`STRIPE_WEBHOOK_SECRET`) на каждый запрос, отказ без валидной подписи |
-| Повторная доставка webhook создаёт задвоение | `PaymentProviderEvent.providerEventId` unique constraint, идемпотентная обработка |
+| Повторная доставка webhook создаёт задвоение | `providerEventId` unique, атомарный processing lease, уникальный `Payment.attemptId` |
+| Временный сбой после записи webhook навсегда теряет событие | `FAILED` и просроченный `PROCESSING` повторно захватываются; Stripe получает 500 при временной ошибке |
 | Злоупотребление payment endpoint (спам PaymentIntent) | Rate limiting на создание PaymentIntent + серверная проверка состояния Bill перед созданием |
+| Гость отменяет чужую попытку оплаты | attemptId дополнительно связывается с DiningSession текущего QR-стола server-side |
+| Два одновременных клика создают два PaymentIntent | partial unique active-attempt index + стабильный Stripe idempotency key |
+| Гость передаёт чужие/оплаченные позиции или ложную сумму | Guest передаёт только OrderItem ids; server заново проверяет принадлежность Bill и вычисляет остатки, `PaymentAttemptAllocation` фиксирует план |
+| Гость сам объявляет наличные полученными | Guest может создать только CASH PaymentAttempt; Payment/CashSettlement создаёт staff action с `REGISTER_CASH_PAYMENT` после проверки received amount |
+| Две группы одновременно платят одну позицию | Один active PaymentAttempt на Bill для CASH и STRIPE, planned allocations и optimistic update остатков |
+| Спам кнопкой вызова официанта | Rate limit новых WaiterCall + partial unique один active call на DiningSession; повтор возвращает существующий вызов |
+| Сотрудник меняет вызов/наличный запрос другого заведения | Каждое staff action повторно ограничивает сущность по `principal.venueId` |
 | Вредоносный upload (media) | Проверка реального MIME (не расширения), лимит размера, серверная проверка контейнера, безопасные сгенерированные filenames, storage prefix изолирован от произвольного path traversal |
 | MIME sniffing на отдаваемых файлах | `Content-Type`/`X-Content-Type-Options: nosniff` на media-раздаче через storage/CDN |
 | Утечка секретов в client bundle | Секреты только в server-only модулях/env, явный lint-guard на импорт server-only в client-компоненты |

@@ -97,3 +97,35 @@
     color: var(--color-paper-faint);
   }
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    color-scheme: light;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  .service-shell {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .print-document {
+    --color-paper: #111;
+    --color-paper-dim: #333;
+    --color-paper-faint: #555;
+    --color-ink-700: #777;
+    --color-ink-800: #bbb;
+    --color-brass: #111;
+    padding: 0 !important;
+  }
+}

@@ -10,9 +10,13 @@ import { MenuItemCard } from '@/components/menu/MenuItemCard';
 import { CartProvider } from '@/components/order/CartProvider';
 import { CartSheet } from '@/components/order/CartSheet';
 import { OrderStatusPanel } from '@/components/order/OrderStatusPanel';
+import { formatCents } from '@/lib/money';
+import { getBillView } from '@/domains/billing/server/bill.service';
 import { DEFAULT_VENUE_SLUG, TABLE_TOKEN_COOKIE } from '@/lib/venue';
-import { submitOrderAction } from './actions';
 import { PollingRefresh } from '@/components/realtime/PollingRefresh';
+import { WaiterCallButton } from '@/components/service/WaiterCallButton';
+import { getActiveWaiterCall } from '@/domains/service-requests/server/waiter-call.service';
+import { callWaiterAction, cancelWaiterCallAction, submitOrderAction } from './actions';
 
 /**
  * Публичное меню и заказ (Server Component).
@@ -31,6 +35,7 @@ export default async function MenuPage(props: {
   const t = await getTranslations('menu');
   const tCommon = await getTranslations('common');
   const tTable = await getTranslations('table');
+  const tPayment = await getTranslations('payment');
 
   const cookieStore = await cookies();
   const tableToken = cookieStore.get(TABLE_TOKEN_COOKIE)?.value;
@@ -40,6 +45,8 @@ export default async function MenuPage(props: {
   const rounds = session ? await getRoundsForSession(session.id) : [];
 
   const menu = await getPublishedMenu(DEFAULT_VENUE_SLUG, locale);
+  const bill = session ? await getBillView(session.id) : null;
+  const waiterCall = session ? await getActiveWaiterCall(session.id) : null;
 
   // Заказ возможен только за распознанным столом. Пока сессии нет, она будет
   // открыта автоматически при первой отправке заказа.
@@ -87,14 +94,23 @@ export default async function MenuPage(props: {
             </div>
           )}
 
+          {table && (
+            <WaiterCallButton
+              key={waiterCall ? `${waiterCall.id}:${waiterCall.status}` : 'no-waiter-call'}
+              initialCall={waiterCall}
+              callAction={callWaiterAction}
+              cancelAction={cancelWaiterCallAction}
+            />
+          )}
+
           {showDevelopmentQrEntry && (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-dashed border-[var(--color-brass-dim)] bg-[var(--color-brass)]/5 p-3">
               <div>
                 <p className="font-[family-name:var(--font-mono)] text-[0.65rem] uppercase tracking-[0.16em] text-[var(--color-brass)]">
-                  Nur lokale Entwicklung
+                  {tCommon('developmentOnly')}
                 </p>
                 <p className="mt-1 text-xs text-[var(--color-paper-dim)]">
-                  Simuliert den echten QR-Einstieg und setzt das Tisch-Cookie.
+                  {tCommon('developmentQrDescription')}
                 </p>
               </div>
               <Link
@@ -102,7 +118,7 @@ export default async function MenuPage(props: {
                 prefetch={false}
                 className="inline-flex min-h-10 items-center justify-center rounded-full border border-[var(--color-brass)] px-4 py-2 font-[family-name:var(--font-mono)] text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-brass)] transition-colors hover:bg-[var(--color-brass)] hover:text-[var(--color-ink-950)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brass)]"
               >
-                DEV · QR Tisch 1 testen
+                {tCommon('developmentQrButton')}
               </Link>
             </div>
           )}
@@ -115,6 +131,31 @@ export default async function MenuPage(props: {
             currency={menu?.currency ?? 'EUR'}
             approvalMode={session.reorderApprovalMode}
           />
+        )}
+
+        {bill && bill.remainingCents > 0 && (
+          <section className="mt-6 rounded-[var(--radius-card)] border border-[var(--color-ink-800)] p-4">
+            <div className="price-rail">
+              <span className="text-sm">{tPayment('remaining')}</span>
+              <span className="price-rail__leader" aria-hidden="true" />
+              <span className="price-rail__value">
+                {formatCents(bill.remainingCents, locale, bill.currency)}
+              </span>
+            </div>
+
+            {bill.requestedAt && (
+              <p className="pt-2 text-xs text-[var(--color-sage)]">
+                {tPayment('requestedByStaff')}
+              </p>
+            )}
+
+            <Link
+              href={`/${locale}/bezahlen`}
+              className="mt-3 inline-block rounded-full border border-[var(--color-brass-dim)] px-4 py-1.5 text-sm text-[var(--color-brass)]"
+            >
+              {tPayment('openBill')}
+            </Link>
+          </section>
         )}
 
         {!menu || menu.categories.length === 0 ? (

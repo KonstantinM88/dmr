@@ -4,6 +4,10 @@ import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatCents } from '@/lib/money';
 import type { OrderRoundView } from '@/domains/orders/shared/types';
+import {
+  MAX_ORDER_ITEM_QUANTITY,
+  MIN_ORDER_ITEM_QUANTITY,
+} from '@/domains/orders/shared/round-quantity';
 
 type DecisionResult = { ok: true; status: string } | { ok: false; reason: string };
 
@@ -21,6 +25,9 @@ type Props = {
 export function RoundDecisionPanel({ round, locale, currency, action }: Props) {
   const t = useTranslations('service');
   const [acceptedIds, setAcceptedIds] = useState<string[]>(round.items.map((item) => item.id));
+  const [quantities, setQuantities] = useState<Record<string, number>>(() =>
+    Object.fromEntries(round.items.map((item) => [item.id, item.quantity])),
+  );
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -40,6 +47,10 @@ export function RoundDecisionPanel({ round, locale, currency, action }: Props) {
         roundId: round.id,
         acceptedItemIds: accepted,
         rejectedItemIds: rejected,
+        itemQuantities: round.items.map((item) => ({
+          orderItemId: item.id,
+          quantity: mode === 'rejectAll' ? item.quantity : (quantities[item.id] ?? item.quantity),
+        })),
         note: note.trim() === '' ? undefined : note.trim(),
       });
       if (!result.ok) setError(t('decisionFailed'));
@@ -48,32 +59,80 @@ export function RoundDecisionPanel({ round, locale, currency, action }: Props) {
 
   return (
     <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-ink-800)] p-4">
+      <p className="mb-3 text-xs text-[var(--color-paper-faint)]">
+        {t('quantityEditHint')}
+      </p>
       <ul className="space-y-2">
-        {round.items.map((item) => (
-          <li key={item.id} className="flex items-baseline gap-3">
-            <input
-              id={`accept-${item.id}`}
-              type="checkbox"
-              checked={acceptedIds.includes(item.id)}
-              onChange={(event) =>
-                setAcceptedIds((current) =>
-                  event.target.checked
-                    ? [...current, item.id]
-                    : current.filter((id) => id !== item.id),
-                )
-              }
-              className="h-4 w-4 accent-[var(--color-brass)]"
-            />
-            <label htmlFor={`accept-${item.id}`} className="flex-1 text-sm">
-              {item.quantity} × {item.name}
-              {item.variantName ? ` · ${item.variantName}` : ''}
-              {item.modifiers.length > 0 ? ` · ${item.modifiers.join(', ')}` : ''}
-            </label>
-            <span className="font-[family-name:var(--font-mono)] text-sm text-[var(--color-brass)]">
-              {formatCents(item.lineTotalCents, locale, currency)}
-            </span>
-          </li>
-        ))}
+        {round.items.map((item) => {
+          const isAccepted = acceptedIds.includes(item.id);
+          const quantity = quantities[item.id] ?? item.quantity;
+          return (
+            <li
+              key={item.id}
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2"
+            >
+              <input
+                id={`accept-${item.id}`}
+                type="checkbox"
+                checked={isAccepted}
+                onChange={(event) => {
+                  const shouldAccept = event.target.checked;
+                  setAcceptedIds((current) =>
+                    shouldAccept
+                      ? [...current, item.id]
+                      : current.filter((id) => id !== item.id),
+                  );
+                  if (!shouldAccept) {
+                    setQuantities((current) => ({ ...current, [item.id]: item.quantity }));
+                  }
+                }}
+                className="h-4 w-4 accent-[var(--color-brass)]"
+              />
+              <label htmlFor={`accept-${item.id}`} className="min-w-0 text-sm">
+                {item.name}
+                {item.variantName ? ` · ${item.variantName}` : ''}
+                {item.modifiers.length > 0 ? ` · ${item.modifiers.join(', ')}` : ''}
+              </label>
+              <span className="font-[family-name:var(--font-mono)] text-sm text-[var(--color-brass)]">
+                {formatCents(item.unitPriceCents * quantity, locale, currency)}
+              </span>
+              <div
+                className="col-start-2 flex items-center gap-2"
+                role="group"
+                aria-label={t('quantity')}
+              >
+                <button
+                  type="button"
+                  disabled={isPending || !isAccepted || quantity <= MIN_ORDER_ITEM_QUANTITY}
+                  onClick={() =>
+                    setQuantities((current) => ({ ...current, [item.id]: quantity - 1 }))
+                  }
+                  aria-label={t('decreaseQuantity', { item: item.name })}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-[var(--color-ink-700)] text-base disabled:opacity-35"
+                >
+                  −
+                </button>
+                <span
+                  className="min-w-6 text-center font-[family-name:var(--font-mono)] text-sm"
+                  aria-live="polite"
+                >
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  disabled={isPending || !isAccepted || quantity >= MAX_ORDER_ITEM_QUANTITY}
+                  onClick={() =>
+                    setQuantities((current) => ({ ...current, [item.id]: quantity + 1 }))
+                  }
+                  aria-label={t('increaseQuantity', { item: item.name })}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-[var(--color-ink-700)] text-base disabled:opacity-35"
+                >
+                  +
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       <label htmlFor={`note-${round.id}`} className="eyebrow mt-4 block">
