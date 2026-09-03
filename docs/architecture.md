@@ -101,9 +101,11 @@ Reconnect и восстановление состояния — обязате�
 `OutboxEvent` (Postgres-таблица) фиксирует событие в той же транзакции,
 что и доменное изменение. Обработка — идемпотентный consumer, вызываемый
 либо Hostinger cron endpoint (защищённый `CRON_SECRET`, fail-closed), либо
-lazy processing при следующем релевантном HTTP-запросе. Тяжёлый
-transcoding медиа не выполняется в процессе Next.js — см. `docs/media`
-раздел в data-model и урок из референса ниже.
+lazy processing при следующем релевантном HTTP-запросе. Транскодинг
+production-медиа не выполняется в процессе Next.js. Временное исключение
+существует только для локальной обкатки редактора: development route
+синхронно нормализует изображения через Sharp в WebP, видео через бандл
+`ffmpeg-static` в WebM и сохраняет их через тот же storage adapter.
 
 ## 8. Вывод из референс-проекта (что НЕ переносить)
 
@@ -119,7 +121,11 @@ transcoding медиа не выполняется в процессе Next.js �
 production media хранится в отдельном object storage/CDN, Next.js хранит
 только metadata и URL (`MediaAsset`). Конкретный провайдер object storage
 — открытый вопрос владельца, см. `docs/implementation-plan.md` §«Открытые
-вопросы».
+вопросы». Для текущей локальной обкатки DMR допускается ограниченный
+development-only adapter `public/uploads/menu/{images,videos,posters}`:
+случайные immutable-имена, проверка MIME/размера, WebP/WebM-конвертация,
+без исходного файла. Production guard в `src/lib/env.ts` по-прежнему
+запрещает `MEDIA_STORAGE_PROVIDER=local`.
 
 Переиспользуемые паттерны референса: разделение `*-shared.ts` (client-safe
 типы) от server-only query-модуля; upsert-based сидинг; поведение

@@ -85,6 +85,11 @@ export type AdminMenuItemView = {
   fullDescription: string | null;
   ingredients: string | null;
   basePriceCents: number;
+  categoryId: string;
+  stationId: string | null;
+  taxProfileId: string | null;
+  spiceLevel: SpiceLevel;
+  sortOrder: number;
   isPublished: boolean;
   isAvailable: boolean;
   stationName: string | null;
@@ -92,7 +97,19 @@ export type AdminMenuItemView = {
   taxRateBasisPoints: number | null;
   recommendedPreparationMinutes: number | null;
   criticalPreparationMinutes: number | null;
+  allergenIds: string[];
   media: MenuMedia[];
+  translations: {
+    de: AdminMenuItemTranslation;
+    ru: AdminMenuItemTranslation;
+  };
+};
+
+export type AdminMenuItemTranslation = {
+  name: string;
+  shortDescription: string;
+  fullDescription: string;
+  ingredients: string;
 };
 
 export type AdminMenuCategoryView = {
@@ -100,7 +117,36 @@ export type AdminMenuCategoryView = {
   slug: string;
   title: string;
   isPublished: boolean;
+  sortOrder: number;
+  translations: {
+    de: AdminMenuCategoryTranslation;
+    ru: AdminMenuCategoryTranslation;
+  };
   items: AdminMenuItemView[];
+};
+
+export type AdminMenuCategoryTranslation = {
+  title: string;
+  description: string;
+};
+
+export type MenuEditorReferenceData = {
+  stations: Array<{
+    id: string;
+    name: string;
+    kind: 'KITCHEN' | 'BAR' | 'OTHER';
+  }>;
+  taxProfiles: Array<{
+    id: string;
+    name: string;
+    rateBasisPoints: number;
+    isDefault: boolean;
+  }>;
+  allergens: Array<{
+    id: string;
+    code: string;
+    name: string;
+  }>;
 };
 
 /** Минимальная цена позиции для списка: база или самый дешёвый вариант. */

@@ -2,6 +2,8 @@ import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { defaultLocale } from '@/i18n/routing';
 import type {
+  AdminMenuCategoryTranslation,
+  AdminMenuItemTranslation,
   MenuCategoryView,
   MenuItemView,
   MenuView,
@@ -173,6 +175,7 @@ export async function getMenuOverview(venueSlug: string, locale: string) {
           station: true,
           taxProfile: true,
           media: { where: { status: 'READY' }, orderBy: { sortOrder: 'asc' } },
+          allergens: { select: { allergenId: true } },
         },
       },
     },
@@ -183,35 +186,111 @@ export async function getMenuOverview(venueSlug: string, locale: string) {
     slug: category.slug,
     title: pickTranslation(category.translations, locale)?.title ?? category.slug,
     isPublished: category.isPublished,
+    sortOrder: category.sortOrder,
+    translations: {
+      de: adminCategoryTranslation(category.translations, 'de'),
+      ru: adminCategoryTranslation(category.translations, 'ru'),
+    },
     items: category.items.map((item) => {
       const translation = pickTranslation(item.translations, locale);
       return {
-      id: item.id,
-      slug: item.slug,
-      name: translation?.name ?? item.slug,
-      shortDescription: translation?.shortDescription ?? null,
-      fullDescription: translation?.fullDescription ?? null,
-      ingredients: translation?.ingredients ?? null,
-      basePriceCents: item.basePriceCents,
-      isPublished: item.isPublished,
-      isAvailable: item.isAvailable,
-      stationName: item.station?.name ?? null,
-      stationKind: item.station?.kind ?? null,
-      taxRateBasisPoints: item.taxProfile?.rateBasisPoints ?? null,
-      recommendedPreparationMinutes: item.recommendedPreparationMinutes,
-      criticalPreparationMinutes: item.criticalPreparationMinutes,
-      media: item.media.map((asset) => ({
-        id: asset.id,
-        kind: asset.kind,
-        url: asset.url,
-        posterUrl: asset.posterUrl,
-        altText: asset.altText,
-        width: asset.width,
-        height: asset.height,
-      })),
-    };
+        id: item.id,
+        slug: item.slug,
+        name: translation?.name ?? item.slug,
+        shortDescription: translation?.shortDescription ?? null,
+        fullDescription: translation?.fullDescription ?? null,
+        ingredients: translation?.ingredients ?? null,
+        basePriceCents: item.basePriceCents,
+        categoryId: item.categoryId,
+        stationId: item.stationId,
+        taxProfileId: item.taxProfileId,
+        spiceLevel: item.spiceLevel,
+        sortOrder: item.sortOrder,
+        isPublished: item.isPublished,
+        isAvailable: item.isAvailable,
+        stationName: item.station?.name ?? null,
+        stationKind: item.station?.kind ?? null,
+        taxRateBasisPoints: item.taxProfile?.rateBasisPoints ?? null,
+        recommendedPreparationMinutes: item.recommendedPreparationMinutes,
+        criticalPreparationMinutes: item.criticalPreparationMinutes,
+        allergenIds: item.allergens.map((link) => link.allergenId),
+        translations: {
+          de: adminItemTranslation(item.translations, 'de'),
+          ru: adminItemTranslation(item.translations, 'ru'),
+        },
+        media: item.media.map((asset) => ({
+          id: asset.id,
+          kind: asset.kind,
+          url: asset.url,
+          posterUrl: asset.posterUrl,
+          altText: asset.altText,
+          width: asset.width,
+          height: asset.height,
+        })),
+      };
     }),
   }));
+}
+
+function adminCategoryTranslation(
+  translations: Array<{ locale: string; title: string; description: string | null }>,
+  locale: 'de' | 'ru',
+): AdminMenuCategoryTranslation {
+  const translation = translations.find((entry) => entry.locale === locale);
+  return {
+    title: translation?.title ?? '',
+    description: translation?.description ?? '',
+  };
+}
+
+function adminItemTranslation(
+  translations: Array<{
+    locale: string;
+    name: string;
+    shortDescription: string | null;
+    fullDescription: string | null;
+    ingredients: string | null;
+  }>,
+  locale: 'de' | 'ru',
+): AdminMenuItemTranslation {
+  const translation = translations.find((entry) => entry.locale === locale);
+  return {
+    name: translation?.name ?? '',
+    shortDescription: translation?.shortDescription ?? '',
+    fullDescription: translation?.fullDescription ?? '',
+    ingredients: translation?.ingredients ?? '',
+  };
+}
+
+export async function getMenuEditorReferenceData(venueId: string, locale: string) {
+  const [stations, taxProfiles, allergens] = await Promise.all([
+    prisma.productionStation.findMany({
+      where: { venueId, isActive: true },
+      orderBy: [{ kind: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, kind: true },
+    }),
+    prisma.taxProfile.findMany({
+      where: { venueId },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { id: true, name: true, rateBasisPoints: true, isDefault: true },
+    }),
+    prisma.allergen.findMany({
+      orderBy: { code: 'asc' },
+      include: { translations: true },
+    }),
+  ]);
+
+  return {
+    stations,
+    taxProfiles,
+    allergens: allergens
+      .map((allergen) => ({
+        id: allergen.id,
+        code: allergen.code,
+        name: pickTranslation(allergen.translations, locale)?.name ?? allergen.code,
+      }))
+      .sort((first, second) => first.name.localeCompare(second.name, locale)),
+  };
 }
 
 /** Позиции для ручного заказа официанта. */

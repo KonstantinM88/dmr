@@ -70,13 +70,14 @@ export default async function MenuPage(props: {
   return (
     <CartProvider sessionKey={cartKey}>
       <PollingRefresh endpoint="/api/live/guest" visibleIntervalMs={8_000} />
-      <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-10">
-        <header className="border-b border-[var(--color-ink-800)] pb-6">
+      <main className="mx-auto w-full max-w-4xl px-4 pb-32 pt-6 sm:px-5 sm:pt-10">
+        <header className="relative overflow-hidden rounded-[1.5rem] border border-[var(--color-ink-800)] bg-[radial-gradient(circle_at_85%_5%,rgba(199,154,69,0.13),transparent_34%),linear-gradient(145deg,rgba(28,35,32,0.95),rgba(15,19,17,0.98))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.18)] sm:p-9">
+          <span aria-hidden="true" className="absolute -right-16 -top-20 h-52 w-52 rounded-full border border-[var(--color-brass)]/10" />
           <p className="eyebrow">{menu?.venueName ?? tCommon('appName')}</p>
-          <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none tracking-tight">
+          <h1 className="mt-3 max-w-xl font-[family-name:var(--font-display)] text-4xl leading-[0.95] tracking-[-0.045em] sm:text-6xl">
             {t('title')}
           </h1>
-          <p className="mt-3 text-sm text-[var(--color-paper-dim)]">{t('subtitle')}</p>
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-[var(--color-paper-dim)] sm:text-base">{t('subtitle')}</p>
 
           {table && (
             <p className="mt-5 inline-flex items-center rounded-full border border-[var(--color-brass-dim)] px-3 py-1 font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]">
@@ -127,6 +128,23 @@ export default async function MenuPage(props: {
           )}
         </header>
 
+        {menu && menu.categories.length > 0 && (
+          <nav
+            aria-label={t('categoryNavigation')}
+            className="sticky top-2 z-10 mt-5 flex gap-2 overflow-x-auto rounded-full border border-[var(--color-ink-800)] bg-[var(--color-ink-950)]/90 p-2 shadow-xl shadow-black/10 backdrop-blur-xl"
+          >
+            {menu.categories.map((category) => (
+              <a
+                key={category.id}
+                href={`#cat-${category.id}`}
+                className="shrink-0 rounded-full px-4 py-2 font-[family-name:var(--font-mono)] text-[0.68rem] uppercase tracking-[0.1em] text-[var(--color-paper-dim)] transition hover:bg-[var(--color-ink-850)] hover:text-[var(--color-brass)]"
+              >
+                {category.title}
+              </a>
+            ))}
+          </nav>
+        )}
+
         {session && (
           <OrderStatusPanel
             rounds={rounds}
@@ -164,23 +182,23 @@ export default async function MenuPage(props: {
         {!menu || menu.categories.length === 0 ? (
           <p className="py-16 text-center text-sm text-[var(--color-paper-dim)]">{t('empty')}</p>
         ) : (
-          menu.categories.map((category) => (
-            <section key={category.id} className="pt-10" aria-labelledby={`cat-${category.id}`}>
-              <h2
-                id={`cat-${category.id}`}
-                className="eyebrow border-b border-[var(--color-brass-dim)] pb-2"
-              >
-                {category.title}
-              </h2>
+          menu.categories.map((category, categoryIndex) => (
+            <section key={category.id} className="scroll-mt-24 pt-12" aria-labelledby={`cat-${category.id}`}>
+              <div className="flex items-end gap-4 border-b border-[var(--color-brass-dim)] pb-3">
+                <span aria-hidden="true" className="font-[family-name:var(--font-mono)] text-[0.65rem] text-[var(--color-brass-dim)]">{String(categoryIndex + 1).padStart(2, '0')}</span>
+                <h2 id={`cat-${category.id}`} className="font-[family-name:var(--font-display)] text-2xl tracking-[-0.025em] sm:text-3xl">
+                  {category.title}
+                </h2>
+              </div>
 
               {category.description && (
-                <p className="pt-3 text-sm text-[var(--color-paper-dim)]">{category.description}</p>
+                <p className="max-w-2xl pt-3 text-sm leading-relaxed text-[var(--color-paper-dim)]">{category.description}</p>
               )}
 
               {category.items.length === 0 ? (
                 <p className="py-6 text-sm text-[var(--color-paper-faint)]">{t('categoryEmpty')}</p>
               ) : (
-                <div className="pt-2">
+                <div className="grid items-start gap-5 pt-5 md:grid-cols-2">
                   {category.items.map((item) => (
                     <MenuItemCard
                       key={item.id}

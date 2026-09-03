@@ -1,12 +1,14 @@
 import 'server-only';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { getEnv } from '@/lib/env';
 import type { MediaUploadResult } from '@/domains/media/shared/types';
 
 /**
  * Единый интерфейс хранилища медиа (docs/architecture.md §4).
  * Домены и UI никогда не знают конкретного провайдера — он подставляется
- * по MEDIA_STORAGE_PROVIDER. Файлы НЕ хранятся в public/ процесса
- * (docs/hostinger-deployment.md §6).
+ * по MEDIA_STORAGE_PROVIDER. Local adapter разрешён только для разработки.
  */
 export interface MediaStorageAdapter {
   readonly providerName: string;
@@ -27,20 +29,45 @@ export interface MediaStorageAdapter {
 class LocalDevStorageAdapter implements MediaStorageAdapter {
   readonly providerName = 'local';
 
-  async putObject(): Promise<MediaUploadResult> {
-    throw new Error(
-      'Загрузка медиа ещё не реализована: провайдер object storage не выбран ' +
-        '(открытый вопрос Этапа 0). На Этапе 1 меню использует внешние URL из сида.',
-    );
+  async putObject(input: {
+    key: string;
+    body: Uint8Array;
+    contentType: string;
+  }): Promise<MediaUploadResult> {
+    const target = resolveLocalMediaPath(input.key);
+    await mkdir(path.dirname(target), { recursive: true });
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    await writeFile(temporary, input.body, { flag: 'wx' });
+    await rename(temporary, target);
+    return {
+      key: input.key,
+      url: `/uploads/${input.key.replaceAll('\\', '/')}`,
+      byteSize: input.body.byteLength,
+      mimeType: input.contentType,
+    };
   }
 
   async getSignedUrl(key: string): Promise<string> {
-    return `/media/${key}`;
+    resolveLocalMediaPath(key);
+    return `/uploads/${key.replaceAll('\\', '/')}`;
   }
 
-  async deleteObject(): Promise<void> {
-    throw new Error('Удаление медиа недоступно у локального адаптера.');
+  async deleteObject(key: string): Promise<void> {
+    await rm(resolveLocalMediaPath(key), { force: true });
   }
+}
+
+const LOCAL_UPLOAD_ROOT = path.resolve(process.cwd(), 'public', 'uploads');
+const SAFE_LOCAL_KEY = /^menu\/(images|videos|posters)\/[a-f0-9-]+\.(webp|webm)$/;
+
+function resolveLocalMediaPath(key: string): string {
+  const normalized = key.replaceAll('\\', '/');
+  if (!SAFE_LOCAL_KEY.test(normalized)) throw new Error('Недопустимый ключ локального media.');
+  const target = path.resolve(LOCAL_UPLOAD_ROOT, ...normalized.split('/'));
+  if (!target.startsWith(`${LOCAL_UPLOAD_ROOT}${path.sep}`)) {
+    throw new Error('Media path выходит за разрешённый каталог.');
+  }
+  return target;
 }
 
 let cached: MediaStorageAdapter | null = null;

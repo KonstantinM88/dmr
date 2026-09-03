@@ -565,7 +565,7 @@ model MenuItemDietaryTag {
 }
 
 // ---------------------------------------------------------------------------
-// Медиа (только metadata + URL; файлы — во внешнем object storage)
+// Медиа (только metadata + URL; development local, production object storage)
 // ---------------------------------------------------------------------------
 
 model MediaAsset {

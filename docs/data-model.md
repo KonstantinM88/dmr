@@ -51,12 +51,16 @@
 - **Allergen** + **AllergenTranslation**, **Additive**, **DietaryTag** —
   структурированные, не свободный текст. Отсутствие записи ≠ «нет
   аллергенов»; UI обязан показывать немецкое предупреждение уточнять у
-  персонала.
+  персонала. Admin editor выбирает аллергены из локализованного справочника
+  EU-14; связи `MenuItemAllergen` заменяются атомарно вместе с сохранением
+  продукта, а неизвестные или повторяющиеся ID отклоняются до записи.
 - **TaxProfile** — ставка НДС/название, привязывается к MenuItem/Variant,
   редактируется бухгалтером/owner, не хардкодится константой.
-- **MediaAsset** — `itemId`/`variantId`, `kind` (image/video), `url`
-  (object storage), `posterUrl`, `status` (processing/ready/failed),
-  `sortOrder`. Next.js хранит только metadata+URL, не сами файлы.
+- **MediaAsset** — `itemId`/`variantId`, `kind` (image/video), `url`,
+  `posterUrl`, `status` (processing/ready/failed), размеры, длительность,
+  MIME и `sortOrder`. База хранит только metadata+URL. В development URL
+  может указывать на нормализованный файл в `public/uploads/menu`; production
+  обязан использовать object storage/CDN без изменения модели.
 
 ## 4. Заказы
 

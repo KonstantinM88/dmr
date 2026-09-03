@@ -87,7 +87,7 @@ export function CartSheet({ locale, currency, canOrder, blockedReason, submitAct
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-ink-800)] bg-[var(--color-ink-900)]/95 backdrop-blur">
-      <div className="mx-auto w-full max-w-2xl px-5 py-3">
+      <div className="mx-auto w-full max-w-4xl px-5 py-3">
         {isOpen && (
           <div className="max-h-[50dvh] overflow-y-auto pb-3">
             <h2 className="eyebrow pb-2">{t('title')}</h2>

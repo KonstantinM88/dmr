@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   // через localhost. Разрешаем только этот дополнительный локальный origin.
   allowedDevOrigins: ['127.0.0.1'],
   // Prisma + pg должны остаться внешними для серверного бандла.
-  serverExternalPackages: ['@prisma/client', '@prisma/adapter-pg', 'pg'],
+  serverExternalPackages: ['@prisma/client', '@prisma/adapter-pg', 'pg', 'ffmpeg-static', 'sharp'],
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

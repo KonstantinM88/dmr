@@ -111,18 +111,56 @@ Claude Code / Codex и других агентов. Перед существе�
   полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 284
-  unit-тестов, migration status, реальные Neon probes, `/api/health`,
-  `/api/ready` и RU QR browser smoke. Backfill подтвердил
+- Последняя проверка успешна: ESLint, TypeScript, production build, 304
+  unit-теста, migration status, реальные Neon probes, `/api/health`,
+  `/api/ready` и RU browser smoke гостевого меню/admin menu editor. Browser
+  подтвердил 14 локализованных allergen options, сохранение и предзаполнение
+  трёх связей у тестового блюда после reload, публичный вывод названий и
+  открытие WebM в media viewer.
+  Backfill подтвердил
   25 planned/22 final allocations без quantity/amount нарушений; partial-unit
-  SQL обновил ровно одну из двух единиц и полностью откатился. Встроенный
-  browser не содержит staff-сессии владельца, поэтому авторизованный
-  визуальный production/service flow оставлен владельцу; Stage 4 Playwright 20/20
-  остаётся последним полным E2E. Chromium установлен.
+  SQL обновил ровно одну из двух единиц и полностью откатился. Авторизованный
+  визуальный production/service flow в этой проверке не повторялся; Stage 4
+  Playwright 20/20 остаётся последним полным E2E. Chromium установлен.
 - Сейчас последняя тестовая DiningSession Tisch 1 `CLOSED`; следующий DEV QR
   заказ создаст новую сессию и нового participant для повторного smoke.
 - Не считать dev-сервер работающим между сессиями. Всегда проверять порт и
   `/api/health`; PID — временное значение и в документацию не записывается.
+- На 2026-09-03 `/[locale]/admin/speisekarte` содержит editor категорий и
+  продуктов: create/update, DE/RU-названия и описания, состав, цена в центах,
+  сортировка, острота, станция, налоговый профиль, публикация, доступность и
+  структурированный выбор аллергенов EU-14. Аллергены выбираются только из
+  общего справочника `Allergen`, server action отклоняет неизвестные и
+  повторяющиеся ID, а `MenuItemAllergen` синхронизируется в той же транзакции,
+  что и продукт; свободный текст для аллергенов не использовать.
+  Hard delete категорий/продуктов намеренно не добавлен: скрытие выполняется
+  через публикацию/доступность, удаление требует отдельной архивной политики.
+- Каталог администратора не выводит развёрнутые карточки сплошным списком:
+  `MenuCatalogWorkspace` показывает компактные строки, раскрывающие полную
+  карточку по запросу, и client-side фильтры по поиску (включая DE/RU-тексты),
+  категории, станции, статусу и media. Доступны сортировка, счётчики, пустое
+  состояние и полный сброс; чистая логика находится в
+  `domains/menu/shared/admin-catalog-filters.ts` и покрыта unit-тестами.
+- Гостевое меню использует editorial layout: контейнер `max-w-4xl`, две
+  колонки на desktop и одну на mobile, крупное media 16:10, выразительные
+  category-заголовки и горизонтальную якорную навигацию. `MenuMediaViewer`
+  открывает доступную полноэкранную галерею через portal, блокирует прокрутку
+  фона, поддерживает Escape/стрелки/миниатюры; если у продукта есть VIDEO,
+  оно ставится первым и открывается с native controls, poster и muted autoplay.
+  Карточка без media остаётся текстовой и не показывает фиктивный placeholder.
+- Локальный media upload реализован только для development: JPEG/PNG/WebP/
+  AVIF до 8 МБ нормализуются Sharp в WebP (до 1600×900), MP4/WebM до 40 МБ
+  транскодируются `ffmpeg-static` в WebM (до 1280×720) с WebP-постером.
+  Результаты лежат в `public/uploads/menu/{images,videos,posters}`; максимум
+  12 media на продукт, имена случайные, исходники удаляются. На время
+  локального и Vercel-preview тестирования готовые WebP/WebM-файлы намеренно
+  не игнорируются Git и могут быть явно добавлены в тестовый deployment.
+  Перед переходом на рабочее media-хранилище это временное правило нужно
+  пересмотреть и исключить runtime-загрузки из репозитория.
+  `/api/admin/menu/media` требует staff-cookie, `MANAGE_MENU`, same-origin и
+  tenant scope. Production local-provider остаётся запрещённым: Vercel
+  показывает только файлы, включённые в deployment, а загрузка новых media
+  во время работы требует S3-compatible adapter/object storage.
 
 ## Структура проекта (целевая, создаётся поэтапно)
 
@@ -171,6 +209,8 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 `/[locale]/admin/zahlungen` и `/api/stripe/webhook`. Домен `notifications`
 появится на своём этапе. В согласованной части Этапа 5 добавлен
 `domains/service-requests`, split/cash UI в `/bezahlen` и service alerts.
+Позже добавлены полноценный menu editor и development-only media pipeline
+в `domains/media`, `/api/admin/menu/media` и `public/uploads/menu`.
 
 ## Решения, принятые на Этапах 1–5 (не пересматривать без миграции)
 
@@ -498,6 +538,7 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-03 | В редактор продукта добавлен локализованный multi-select полного справочника аллергенов EU-14, видимые allergen badges в admin-карточке, server-side проверка уникальных существующих ID и атомарная синхронизация `MenuItemAllergen`. Публичное меню продолжает получать названия через существующий DE/RU translation fallback. Загруженные владельцем media проверены на диске и в browser: изображения нормализованы в WebP, видео — в WebM с WebP-постерами, WebM открывается в полноэкранном viewer. Проверены lint, typecheck, production build, 304 unit-теста, health/readiness и свежий dev-log без ошибок. | Устранён разрыв: schema, seed и guest query поддерживали аллергены, но admin editor раньше их не загружал и не сохранял. Schema/migration не менялись. |
 | 2026-09-03 | `/[locale]/admin` оформлен как расширяемый dashboard, а `/[locale]/admin/speisekarte` — как rich-каталог карточек с фото/видео preview, описанием, составом, ценой, станцией, публикацией и availability. В карточке с `MANAGE_MENU` задаётся recommended/critical preparation SLA; общий READY→handoff SLA требует `MANAGE_OPERATIONAL_SETTINGS`. Миграция `20260903013000_menu_production_sla` добавила MenuItem-поля и OrderItem snapshot с CHECK constraints. Кухня/бар/официант показывают зелёный/жёлтый/красный SLA либо явное «не настроен». Изменения настроек аудируются. | По команде владельца заложить основу admin dashboard для будущих модулей и хранить реальные нормативы в карточках продуктов. Media upload/edit и CRUD содержимого пока не включены: карточки отображают уже существующие MediaAsset/translation данные, production-файлы по-прежнему требуют выбранного object storage. |
 | 2026-09-03 | Официантский service board и detail стола расширены с ready-only до полного контроля незавершённого производства. Для каждой позиции показываются количество, кухня/бар, точный статус `QUEUED/ACCEPTED/IN_PROGRESS/READY` и живое время в текущем статусе; самые старые ожидания идут первыми, `READY` сохраняет прямое подтверждение выдачи. Текущий DB probe подтвердил согласованность: кофе и суп `HANDED_OFF/SERVED`, пиво `IN_PROGRESS`, лисички `READY`; свежие логи — 11 production transitions, 2 handoff, 0 ошибок/5xx. | По просьбе владельца не допустить незаметно забытую позицию на кухне или в баре. Schema/migration не менялись; SLA-пороги намеренно не придуманы без бизнес-решения. |
 | 2026-09-03 | Разобран production-тест: действия кухни/бара прошли без Prisma/5xx, но очередь показывала 17 незавершённых тикетов семи уже закрытых посещений. Full snapshot теперь исключает `CLOSED`/`CANCELLED` sessions, delta превращает их тикеты в terminal tombstones. По прямой команде владельца транзакционно удалены все 7 закрытых локальных тестовых сессий: 13 раундов, 28 позиций/тикетов и 12 платежей; Venue/menu/owner сохранены. Invalid locale теперь отклоняется до menu query. Проверены lint, typecheck, production build, 281 unit-тест, health/readiness, корректные 404 invalid locale и чистый stderr после перезапуска. | Очистка только локальной тестовой Neon branch для нового полного прохода. Автоматическое удаление истории при обычном закрытии не добавлялось. |

@@ -70,6 +70,15 @@ hosting). Используется отдельный object storage/CDN (кон
 Next.js хранит только `MediaAsset` metadata+URL. Тяжёлый transcoding —
 вне основного HTTP-запроса (см. `architecture.md` §7).
 
+Для локального development-теста редактора действует отдельное временное
+исключение: `MEDIA_STORAGE_PROVIDER=local` пишет готовые WebP/WebM-файлы в
+`public/uploads/menu`. На период локальной проверки и Vercel-preview готовые
+файлы намеренно не игнорируются Git: выбранный тестовый набор можно явно
+закоммитить и включить в deployment. Это не разрешает runtime-upload на
+Vercel и не является персистентным media-хранилищем: production runtime
+fail-closed требует `s3`. Перед рабочим запуском на Hostinger правило Git и
+storage-конфигурацию нужно пересмотреть вместе с выбранным хранилищем.
+
 ## 7. Мониторинг, откат, восстановление
 
 - Deployment logs через Hostinger hPanel.

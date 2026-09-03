@@ -70,7 +70,7 @@ export function AddToCartControls({ item, locale, currency }: Props) {
   };
 
   return (
-    <div className="mt-3 space-y-3">
+    <div className="mt-5 space-y-4 border-t border-[var(--color-ink-800)] pt-4">
       {availableVariants.length > 1 && (
         <fieldset>
           <legend className="eyebrow">{t('variants')}</legend>
@@ -83,8 +83,8 @@ export function AddToCartControls({ item, locale, currency }: Props) {
                 onClick={() => setVariantId(candidate.id)}
                 className={
                   candidate.id === variantId
-                    ? 'rounded-full border border-[var(--color-brass)] px-3 py-1 text-xs text-[var(--color-brass)]'
-                    : 'rounded-full border border-[var(--color-ink-700)] px-3 py-1 text-xs text-[var(--color-paper-dim)]'
+                    ? 'rounded-full border border-[var(--color-brass)] bg-[var(--color-brass)]/10 px-3.5 py-1.5 text-xs text-[var(--color-brass)]'
+                    : 'rounded-full border border-[var(--color-ink-700)] px-3.5 py-1.5 text-xs text-[var(--color-paper-dim)] transition hover:border-[var(--color-brass-dim)]'
                 }
               >
                 {candidate.name} · {formatCents(candidate.priceCents, locale, currency)}
@@ -110,8 +110,8 @@ export function AddToCartControls({ item, locale, currency }: Props) {
                   }
                   className={
                     optionIds.includes(option.id)
-                      ? 'rounded-full border border-[var(--color-brass)] px-3 py-1 text-xs text-[var(--color-brass)]'
-                      : 'rounded-full border border-[var(--color-ink-700)] px-3 py-1 text-xs text-[var(--color-paper-dim)]'
+                      ? 'rounded-full border border-[var(--color-brass)] bg-[var(--color-brass)]/10 px-3.5 py-1.5 text-xs text-[var(--color-brass)]'
+                      : 'rounded-full border border-[var(--color-ink-700)] px-3.5 py-1.5 text-xs text-[var(--color-paper-dim)] transition hover:border-[var(--color-brass-dim)]'
                   }
                 >
                   {option.name}
@@ -124,24 +124,24 @@ export function AddToCartControls({ item, locale, currency }: Props) {
         </fieldset>
       ))}
 
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex items-center justify-center gap-2 rounded-full border border-[var(--color-ink-800)] bg-[var(--color-ink-950)]/45 p-1">
           <button
             type="button"
             onClick={() => setQuantity((value) => Math.max(1, value - 1))}
             aria-label={tCart('decrease')}
-            className="h-8 w-8 rounded-full border border-[var(--color-ink-700)]"
+            className="h-9 w-9 rounded-full border border-[var(--color-ink-700)] text-lg transition hover:border-[var(--color-brass-dim)] hover:text-[var(--color-brass)]"
           >
             −
           </button>
-          <span className="w-5 text-center font-[family-name:var(--font-mono)] text-sm">
+          <span className="w-6 text-center font-[family-name:var(--font-mono)] text-sm">
             {quantity}
           </span>
           <button
             type="button"
             onClick={() => setQuantity((value) => Math.min(50, value + 1))}
             aria-label={tCart('increase')}
-            className="h-8 w-8 rounded-full border border-[var(--color-ink-700)]"
+            className="h-9 w-9 rounded-full border border-[var(--color-ink-700)] text-lg transition hover:border-[var(--color-brass-dim)] hover:text-[var(--color-brass)]"
           >
             +
           </button>
@@ -150,7 +150,11 @@ export function AddToCartControls({ item, locale, currency }: Props) {
         <button
           type="button"
           onClick={handleAdd}
-          className="flex-1 rounded-full border border-[var(--color-brass-dim)] px-4 py-2 text-sm text-[var(--color-brass)]"
+          className={
+            added
+              ? 'min-h-12 flex-1 rounded-full border border-[var(--color-sage)] bg-[var(--color-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-ink-950)] transition'
+              : 'min-h-12 flex-1 rounded-full border border-[var(--color-brass)] bg-[var(--color-brass)] px-5 py-2.5 text-sm font-medium text-[var(--color-ink-950)] shadow-[0_12px_28px_rgba(199,154,69,0.16)] transition hover:bg-[#d6aa54]'
+          }
         >
           {added
             ? tCart('added')

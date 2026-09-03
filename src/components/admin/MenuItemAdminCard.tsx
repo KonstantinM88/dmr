@@ -1,22 +1,32 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import type { AdminMenuItemView } from '@/domains/menu/shared/types';
+import type {
+  AdminMenuCategoryView,
+  AdminMenuItemView,
+  MenuEditorReferenceData,
+} from '@/domains/menu/shared/types';
 import { formatCents } from '@/lib/money';
 import { AvailabilityToggle } from '@/components/menu/AvailabilityToggle';
 import { ProductionSlaEditor } from '@/components/admin/ProductionSlaEditor';
+import { MenuItemEditor } from '@/components/admin/MenuItemEditor';
+import { MenuMediaManager } from '@/components/admin/MenuMediaManager';
 
 type Props = {
   item: AdminMenuItemView;
   locale: string;
   availabilityAction: (payload: unknown) => Promise<{ ok: boolean }>;
   slaAction: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+  editorAction: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+  categories: Pick<AdminMenuCategoryView, 'id' | 'title'>[];
+  references: MenuEditorReferenceData;
 };
 
-export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction }: Props) {
+export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction, editorAction, categories, references }: Props) {
   const t = useTranslations('admin');
   const image = item.media.find((asset) => asset.kind === 'IMAGE');
   const video = item.media.find((asset) => asset.kind === 'VIDEO');
+  const allergens = references.allergens.filter((allergen) => item.allergenIds.includes(allergen.id));
   const station =
     item.stationKind === 'KITCHEN'
       ? t('stationKitchen')
@@ -97,6 +107,12 @@ export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction 
             {item.ingredients}
           </p>
         )}
+        {allergens.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="mr-1 text-[var(--color-paper-dim)]">{t('editorAllergens')}:</span>
+            {allergens.map((allergen) => <span key={allergen.id} className="rounded-full border border-[var(--color-clay)]/35 bg-[var(--color-clay)]/8 px-2 py-1 text-[var(--color-paper-dim)]">{allergen.name}</span>)}
+          </div>
+        )}
 
         <div className="mt-4">
           <AvailabilityToggle
@@ -112,6 +128,22 @@ export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction 
           criticalMinutes={item.criticalPreparationMinutes}
           action={slaAction}
         />
+
+        <details className="mt-4 border-t border-[var(--color-ink-800)] pt-4">
+          <summary className="cursor-pointer text-sm text-[var(--color-brass)]">
+            {t('editorEditItem')}
+          </summary>
+          <div className="mt-4">
+            <MenuItemEditor
+              item={item}
+              categories={categories}
+              references={references}
+              action={editorAction}
+            />
+          </div>
+        </details>
+
+        <MenuMediaManager itemId={item.id} media={item.media} />
       </div>
     </article>
   );
