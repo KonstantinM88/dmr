@@ -60,7 +60,7 @@ export default async function LocaleLayout(props: {
     <html lang={locale} className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body className="min-h-dvh antialiased">
         <NextIntlClientProvider messages={messages}>
-          <div className="mx-auto flex w-full max-w-4xl justify-end px-5 pt-3">
+          <div className="print-hidden mx-auto flex w-full max-w-4xl justify-end px-5 pt-3">
             <LocaleSwitcher label={tCommon('language')} />
           </div>
           {props.children}

@@ -140,4 +140,19 @@
     --color-brass: #111;
     padding: 0 !important;
   }
+
+  .qr-print-page {
+    padding: 0 !important;
+  }
+
+  .qr-print-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8mm !important;
+  }
+
+  .qr-print-card {
+    break-inside: avoid;
+    border: 1px solid #bbb !important;
+    box-shadow: none !important;
+  }
 }

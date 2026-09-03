@@ -38,6 +38,8 @@
 | Утечка секретов в client bundle | Секреты только в server-only модулях/env, явный lint-guard на импорт server-only в client-компоненты |
 | Утечка секретов в логах | Маскирование/исключение Stripe secrets, session tokens, полных cookie, паролей, платёжных данных из structured logging |
 | Случайная публикация локального QR-helper | `/api/dev/qr-entry` имеет двойной `NODE_ENV === 'development'` guard (route + server-only domain service), в production отвечает `404`, не отдаёт токен в HTML/JSON и перенаправляет только на фиксированный внутренний `/t/[token]` |
+| Сканер QR используется для перехода на внешний/вредоносный URL | Client-side сканер принимает только `http(s)` URL текущего или настроенного origin, точный путь `/t/<opaque-token>` без query/hash; затем используется обычный server-side `/t/[token]` flow |
+| Утечка действующих QR при печати | Печатная страница требует staff session + `MANAGE_TABLES_QR`; токены читаются только server-side и преобразуются в QR PNG, локальные тестовые PNG хранятся в исключённой из Git папке `temp/` |
 | Доступ кухни к бару или бара к кухне | Queue GET и transition server action независимо требуют staff session, `MANAGE_PRODUCTION_TICKET` и station-specific `VIEW_KITCHEN_QUEUE`/`VIEW_BAR_QUEUE`; domain service повторно сверяет `venueId` и `station.kind` тикета |
 | Утечка realtime-данных через кэш | Все polling endpoints отвечают `private, no-store`; guest feed разрешает стол только по HttpOnly QR-cookie, staff feeds — только по revocable staff session |
 | Избыточный сбор персональных данных | GDPR data minimization: гость не обязан давать email/телефон/имя, если это не требуется выбранным способом оплаты |

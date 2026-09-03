@@ -182,6 +182,39 @@ export async function listTables(venueSlug: string) {
   }));
 }
 
+/**
+ * Действующие QR-токены для защищённой server-side печатной страницы.
+ * Результат нельзя передавать в Client Component или журналировать: QR является
+ * bearer-доступом к столу. На страницу уходит только уже отрисованное QR-изображение.
+ */
+export async function listPrintableTableQrTokens(
+  venueSlug: string,
+  tableLabels?: readonly string[],
+) {
+  const tables = await prisma.diningTable.findMany({
+    where: {
+      venue: { slug: venueSlug },
+      isActive: true,
+      ...(tableLabels && tableLabels.length > 0 ? { label: { in: [...tableLabels] } } : {}),
+    },
+    orderBy: { sortOrder: 'asc' },
+    select: {
+      label: true,
+      qrTokens: {
+        where: { revokedAt: null },
+        orderBy: { issuedAt: 'desc' },
+        take: 1,
+        select: { token: true },
+      },
+    },
+  });
+
+  return tables.flatMap((table) => {
+    const token = table.qrTokens[0]?.token;
+    return token ? [{ label: table.label, token }] : [];
+  });
+}
+
 /** Минимальный список активных столов для service board. */
 export async function listActiveTablesForService(venueSlug: string) {
   return prisma.diningTable.findMany({

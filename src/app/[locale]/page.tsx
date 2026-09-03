@@ -16,9 +16,11 @@ import { getBillView } from '@/domains/billing/server/bill.service';
 import { DEFAULT_VENUE_SLUG, TABLE_TOKEN_COOKIE } from '@/lib/venue';
 import { PollingRefresh } from '@/components/realtime/PollingRefresh';
 import { WaiterCallButton } from '@/components/service/WaiterCallButton';
+import { TableQrScanner } from '@/components/tables/TableQrScanner';
 import { getActiveWaiterCall } from '@/domains/service-requests/server/waiter-call.service';
 import { callWaiterAction, cancelWaiterCallAction, submitOrderAction } from './actions';
 import { isSupportedLocale } from '@/i18n/routing';
+import { getEnv } from '@/lib/env';
 
 /**
  * Публичное меню и заказ (Server Component).
@@ -50,6 +52,7 @@ export default async function MenuPage(props: {
   const menu = await getPublishedMenu(DEFAULT_VENUE_SLUG, locale);
   const bill = session ? await getBillView(session.id) : null;
   const waiterCall = session ? await getActiveWaiterCall(session.id) : null;
+  const env = getEnv();
 
   // Заказ возможен только за распознанным столом. Пока сессии нет, она будет
   // открыта автоматически при первой отправке заказа.
@@ -88,6 +91,11 @@ export default async function MenuPage(props: {
           {!table && (
             <p className="mt-5 text-sm text-[var(--color-paper-dim)]">{tTable('scanRequired')}</p>
           )}
+
+          <TableQrScanner
+            configuredSiteUrl={env.NEXT_PUBLIC_SITE_URL}
+            currentTableLabel={table?.label}
+          />
 
           {tableFlag === 'invalid' && (
             <div className="mt-5 rounded-[var(--radius-card)] border border-[var(--color-clay)]/40 bg-[var(--color-clay)]/10 p-4">

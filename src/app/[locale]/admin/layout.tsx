@@ -23,7 +23,7 @@ export default async function AdminLayout(props: {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8">
-      <header className="flex flex-wrap items-baseline justify-between gap-3 border-b border-[var(--color-ink-800)] pb-4">
+      <header className="print-hidden flex flex-wrap items-baseline justify-between gap-3 border-b border-[var(--color-ink-800)] pb-4">
         <div>
           <p className="eyebrow">{t('title')}</p>
           <p className="mt-1 text-sm text-[var(--color-paper-dim)]">

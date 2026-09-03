@@ -59,6 +59,19 @@
     "sessionClosed": "Die Tischsitzung ist abgeschlossen.",
     "scanRequired": "Bitte scannen Sie den QR-Code an Ihrem Tisch, um zu bestellen."
   },
+  "tableQrScanner": {
+    "open": "Tisch-QR-Code scannen",
+    "scanAnother": "Anderen Tisch scannen",
+    "title": "Tisch scannen",
+    "starting": "Kamerazugriff wird angefragt …",
+    "aimCamera": "Richten Sie die Kamera auf den QR-Code am Tisch.",
+    "invalidQr": "Dies ist kein Tisch-QR-Code dieses Restaurants. Bitte scannen Sie einen anderen Code.",
+    "cameraDenied": "Der Kamerazugriff wurde verweigert. Bitte erlauben Sie ihn in den Browser-Einstellungen und öffnen Sie den Scanner erneut.",
+    "cameraMissing": "Auf diesem Gerät wurde keine Kamera gefunden.",
+    "cameraError": "Die Kamera konnte nicht gestartet werden. Öffnen Sie die Website über HTTPS und prüfen Sie die Browser-Berechtigungen.",
+    "privacy": "Das Kamerabild wird nur in Ihrem Browser verarbeitet und nicht an den Server übertragen.",
+    "close": "Scanner schließen"
+  },
   "cart": {
     "title": "Ihre Auswahl",
     "empty": "Noch nichts ausgewählt.",
@@ -461,6 +474,17 @@
   "tables": {
     "title": "Tische und QR-Codes",
     "intro": "Neue QR-Adressen werden nur einmal angezeigt. Beim Rotieren wird der bisherige Code sofort ungültig.",
+    "printFirstTwo": "QR für Tisch 1 und 2 drucken",
+    "printAll": "Alle aktiven QR-Codes drucken",
+    "printTitle": "QR-Codes der Tische",
+    "printIntro": "Die Druckkarten verwenden die aktuell gültigen Codes. Nach einer Rotation muss der QR-Code des Tisches neu gedruckt werden.",
+    "printAction": "Drucken",
+    "printBack": "Zurück zu den Tischen",
+    "printEmpty": "Für die ausgewählten Tische sind keine gültigen QR-Codes vorhanden.",
+    "printTable": "Tisch {label}",
+    "printQrAlt": "QR-Code für Tisch {label}",
+    "printScan": "Scannen und Speisekarte öffnen",
+    "printScanHint": "Die Handykamera öffnet die Speisekarte dieses Tisches.",
     "newTableLabel": "Tischbezeichnung",
     "create": "Anlegen",
     "duplicateLabel": "Diese Bezeichnung ist bereits vergeben.",

@@ -111,7 +111,7 @@ Claude Code / Codex и других агентов. Перед существе�
   полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 308
+- Последняя проверка успешна: ESLint, TypeScript, production build, 318
   unit-тестов, migration status, реальные Neon probes, `/api/health`,
   `/api/ready` и RU browser smoke гостевого меню/admin menu editor. Browser
   подтвердил 14 локализованных allergen options, сохранение и предзаполнение
@@ -204,8 +204,10 @@ API routes / server components, отдающие client-safe типы. С Эта
 `t/[token]`, `api/health`, `api/ready`), `src/domains/{menu,tables,staff,
 media,audit,localization}`, `src/lib`, `src/components`, `prisma`, `tests`.
 На Этапе 2 добавлены `domains/{sessions,orders}`, guest cart/order actions,
-service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
-`/[locale]/admin/tische` и 40 unit-тестов. На Этапе 3 добавлены
+service routes `/[locale]/service[/[sessionId]]`, admin tables/QR routes
+`/[locale]/admin/tische[/druck]` и 40 unit-тестов. Guest `/[locale]` также
+содержит production QR-camera scanner, использующий настоящий `/t/[token]`
+flow. На Этапе 3 добавлены
 `domains/{production,realtime}`, `/[locale]/produktion/{kueche,bar}`,
 `/api/production/queue`, `/api/live/{guest,service}` и sold-out action.
 На Этапе 4 добавлены `domains/{billing,payments}`, `/[locale]/bezahlen`,
@@ -386,6 +388,9 @@ Stripe contract Этапа 4: все три переменные либо пус
 - Никогда не выводить содержимое этих файлов, connection URI, пароли,
   session secrets или QR-токены в ответ, tool output, commit, issue, docs или
   логи. Для проверки читать их внутри процесса и выводить только статусы.
+- `temp/qr-print/` содержит тестовые печатные PNG действующих QR-кодов. Эти
+  изображения также являются bearer-доступом к столам: не коммитить, не
+  публиковать как статические assets и не отправлять посторонним.
 - `.env.example` хранит только демонстрационные значения и должен оставаться
   пригодным как полный список переменных.
 - Смена `SEED_OWNER_PASSWORD` после первого сида сама по себе НЕ меняет хеш
@@ -393,6 +398,16 @@ Stripe contract Этапа 4: все три переменные либо пус
   Пароль менять отдельной явной операцией/функцией, не повторным сидом.
 - Повторный сид не показывает существующие QR-токены. Не ротировать токены
   ради повторного вывода: ротация отзывает старые напечатанные QR.
+
+- Production-сканер на `/[locale]` работает только после явного клика и
+  принимает исключительно точный `/t/<opaque-token>` текущего либо
+  `NEXT_PUBLIC_SITE_URL` origin без query/hash. Он не заменяет server-side
+  проверку токена и не является production-версией `/api/dev/qr-entry`.
+- Печатная страница `/[locale]/admin/tische/druck` требует
+  `MANAGE_TABLES_QR`; plaintext token не передаётся в Client Component.
+  `npm run qr:generate:test` создаёт PNG столов 1 и 2 из действующих токенов
+  в `temp/qr-print` с доменом из `NEXT_PUBLIC_SITE_URL`. До выбора финального
+  домена считать их только тестовыми и после ротации генерировать заново.
 
 ## Prisma 7 и база данных
 
@@ -433,6 +448,7 @@ npm run db:migrate:deploy
 npm run db:seed
 npm run db:seed:ru
 npm run db:studio
+npm run qr:generate:test
 ```
 
 Особенности этой managed Windows-среды:
@@ -547,6 +563,7 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-04 | Добавлен безопасный QR-сканер с камерой на гостевом DE/RU-меню, защищённая `MANAGE_TABLES_QR` печатная страница столов, повторяемый генератор тестовых PNG и favicon. Сканер принимает только точный `/t/<token>` текущего/настроенного origin; plaintext-токены не попадают в Client Component или логи. Созданы и декодированием проверены 1200×1200 PNG Tisch 1/2 для текущего Vercel test domain в ignored `temp/qr-print`; оба live-входа вернули ожидаемые 307, Secure HttpOnly table cookie и locale redirect. Проверены lint, typecheck, production build, 318 unit-тестов и browser smoke кнопки/permission-error/admin print layout. | Приложенные 83 Vercel-события: 0 error-level, 0 HTTP 5xx, 71 HTTP 200; только 6 favicon 404, устранённых `app/icon.svg`. Домен Vercel остаётся тестовым: до печати финальных ресторанных табличек выбрать постоянный домен и обновить `NEXT_PUBLIC_SITE_URL`. |
 | 2026-09-04 | Исправлен runtime 500 первого Vercel deployment: добавлен явный `MEDIA_STORAGE_PROVIDER=bundled` для read-only показа закоммиченных `public/uploads` файлов. `local` остаётся запрещённым в production; bundled UI скрывает upload/delete, API возвращает `503 storage_read_only`, storage adapter не допускает запись. Проверены lint, typecheck, production build, 308 unit-тестов и отдельный production-smoke: health ok, Neon ready, `/ru` 200, bundled media 200. | Vercel build был успешен, но `/de`, `/ru` и favicon падали из-за собственной production env-проверки. Для следующего deployment нужно заменить значение Vercel env `MEDIA_STORAGE_PROVIDER` с `local` на `bundled`; постоянный production по-прежнему требует S3-compatible storage. |
 | 2026-09-03 | В редактор продукта добавлен локализованный multi-select полного справочника аллергенов EU-14, видимые allergen badges в admin-карточке, server-side проверка уникальных существующих ID и атомарная синхронизация `MenuItemAllergen`. Публичное меню продолжает получать названия через существующий DE/RU translation fallback. Загруженные владельцем media проверены на диске и в browser: изображения нормализованы в WebP, видео — в WebM с WebP-постерами, WebM открывается в полноэкранном viewer. Проверены lint, typecheck, production build, 304 unit-теста, health/readiness и свежий dev-log без ошибок. | Устранён разрыв: schema, seed и guest query поддерживали аллергены, но admin editor раньше их не загружал и не сохранял. Schema/migration не менялись. |
 | 2026-09-03 | `/[locale]/admin` оформлен как расширяемый dashboard, а `/[locale]/admin/speisekarte` — как rich-каталог карточек с фото/видео preview, описанием, составом, ценой, станцией, публикацией и availability. В карточке с `MANAGE_MENU` задаётся recommended/critical preparation SLA; общий READY→handoff SLA требует `MANAGE_OPERATIONAL_SETTINGS`. Миграция `20260903013000_menu_production_sla` добавила MenuItem-поля и OrderItem snapshot с CHECK constraints. Кухня/бар/официант показывают зелёный/жёлтый/красный SLA либо явное «не настроен». Изменения настроек аудируются. | По команде владельца заложить основу admin dashboard для будущих модулей и хранить реальные нормативы в карточках продуктов. Media upload/edit и CRUD содержимого пока не включены: карточки отображают уже существующие MediaAsset/translation данные, production-файлы по-прежнему требуют выбранного object storage. |

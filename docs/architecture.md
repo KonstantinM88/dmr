@@ -151,7 +151,10 @@ admin. Заказы/статусы/платежи/разрешения — вс�
 
 ## 11. Реализованные маршруты Этапов 2–3
 
-- Guest: `/[locale]` (меню, корзина, submit/status), `/t/[token]` (QR entry).
+- Guest: `/[locale]` (меню, корзина, submit/status и client-side камера для
+  сканирования), `/t/[token]` (QR entry). Сканер разрешает только точный
+  `/t/<opaque-token>` на текущем или настроенном origin и проходит через тот
+  же server-side QR/cookie flow без отдельного тестового обхода.
 - Service: `/[locale]/service`, `/[locale]/service/[sessionId]`; защищённые
   печатные представления внутренней полной ведомости и отдельной успешной
   оплаты — `/[locale]/service/[sessionId]/druck[/[paymentId]]`.
@@ -161,7 +164,10 @@ admin. Заказы/статусы/платежи/разрешения — вс�
 - Billing/Stripe: `/[locale]/bezahlen`, `/api/stripe/webhook`,
   `/[locale]/admin/zahlungen`; server SDK импортируется только доменом
   `payments/server`.
-- Admin tables/QR: `/[locale]/admin/tische`.
+- Admin tables/QR: `/[locale]/admin/tische`; защищённая правом
+  `MANAGE_TABLES_QR` печатная раскладка действующих кодов —
+  `/[locale]/admin/tische/druck`. Plaintext-токены не передаются в Client
+  Components: QR PNG строится в Server Component.
 - Маршруты Этапа 1 сохраняются: `/[locale]/anmelden`, `/[locale]/admin`,
   `/[locale]/admin/speisekarte`, `/api/health`, `/api/ready`.
 - Локальный dev-helper: `/api/dev/qr-entry` находит активный QR-токен стола 1
