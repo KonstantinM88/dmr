@@ -11,6 +11,7 @@ import { RoundDecisionPanel } from '@/components/service/RoundDecisionPanel';
 import { ApprovalModeToggle } from '@/components/service/ApprovalModeToggle';
 import { ManualOrderForm } from '@/components/service/ManualOrderForm';
 import { ServedButton } from '@/components/service/ServedButton';
+import { ServiceProductionProgress } from '@/components/service/ServiceProductionProgress';
 import { RequestPaymentButton } from '@/components/payment/RequestPaymentButton';
 import { CashSettlementPanel } from '@/components/payment/CashSettlementPanel';
 import { StaffPaymentStartPanel } from '@/components/payment/StaffPaymentStartPanel';
@@ -20,6 +21,8 @@ import { WaitingDuration } from '@/components/service/WaitingDuration';
 import { getActiveWaiterCall } from '@/domains/service-requests/server/waiter-call.service';
 import { getBillView } from '@/domains/billing/server/bill.service';
 import { getPrintableBillDocument } from '@/domains/payments/server/printable-document.service';
+import type { ServiceProductionItem } from '@/domains/sessions/shared/types';
+import { getReadyHandoffSlaSettings } from '@/domains/production/server/production-sla.service';
 import {
   createManualOrderAction,
   acknowledgeWaiterCallAction,
@@ -61,8 +64,34 @@ export default async function SessionDetailPage(props: {
     ? await getPrintableBillDocument(session.id, principal.venueId)
     : null;
   const waiterCall = await getActiveWaiterCall(session.id);
+  const readyHandoffSla = await getReadyHandoffSlaSettings(principal.venueId);
 
   const currency = 'EUR';
+  const productionItems = session.rounds.flatMap((round) =>
+    round.items.flatMap((item): ServiceProductionItem[] => {
+      if (
+        !item.productionStatus ||
+        !item.productionStatusSince ||
+        !item.productionQueuedAt ||
+        !item.stationKind ||
+        item.productionStatus === 'HANDED_OFF' ||
+        item.productionStatus === 'CANCELLED'
+      ) {
+        return [];
+      }
+      return [{
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        ticketStatus: item.productionStatus,
+        stationKind: item.stationKind,
+        statusSince: item.productionStatusSince,
+        queuedAt: item.productionQueuedAt,
+        recommendedPreparationMinutes: item.recommendedPreparationMinutes ?? null,
+        criticalPreparationMinutes: item.criticalPreparationMinutes ?? null,
+      }];
+    }),
+  );
 
   const manualOrderOptions = principal.permissions.includes('CREATE_MANUAL_ORDER')
     ? await getManualOrderOptions(DEFAULT_VENUE_SLUG, locale)
@@ -107,6 +136,13 @@ export default async function SessionDetailPage(props: {
           </div>
         </section>
       )}
+
+      <ServiceProductionProgress
+        items={productionItems}
+        canMarkServed={principal.permissions.includes('MARK_ITEM_SERVED')}
+        action={markServedAction}
+        readyHandoffSla={readyHandoffSla}
+      />
 
       {principal.permissions.includes('MANAGE_REORDER_APPROVAL') && (
         <div className="mt-4">

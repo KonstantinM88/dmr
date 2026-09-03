@@ -26,13 +26,22 @@ export type ProductionQueueTicket = {
   modifiers: string[];
   quantity: number;
   note: string | null;
+  recommendedPreparationMinutes: number | null;
+  criticalPreparationMinutes: number | null;
   queuedAt: string;
+  acceptedAt: string | null;
+  startedAt: string | null;
+  readyAt: string | null;
   updatedAt: string;
 };
 
 export type ProductionQueueSnapshot = {
   stationKind: ProductionStationKind;
   cursor: string;
+  readyHandoffSla: {
+    warningMinutes: number | null;
+    criticalMinutes: number | null;
+  };
   tickets: ProductionQueueTicket[];
 };
 

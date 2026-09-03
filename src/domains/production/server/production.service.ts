@@ -17,6 +17,8 @@ import type {
   TransitionTicketResult,
 } from '@/domains/production/shared/types';
 import type { Prisma } from '@/generated/prisma/client';
+import { queueTicketStatusForSession } from '@/domains/production/shared/queue';
+import { getReadyHandoffSlaSettings } from '@/domains/production/server/production-sla.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -68,19 +70,37 @@ export async function getProductionQueueDelta(input: {
   stationKind: ProductionStationKind;
   cursor?: Date;
 }): Promise<ProductionQueueDelta> {
-  const [{ snapshotAt }] = await prisma.$queryRaw<[{ snapshotAt: Date }]>`
-    SELECT CURRENT_TIMESTAMP AS "snapshotAt"
-  `;
+  const [[{ snapshotAt }], readyHandoffSla] = await Promise.all([
+    prisma.$queryRaw<[{ snapshotAt: Date }]>`
+      SELECT CURRENT_TIMESTAMP AS "snapshotAt"
+    `,
+    getReadyHandoffSlaSettings(input.venueId),
+  ]);
   const full = input.cursor === undefined;
 
   const tickets = await prisma.productionTicket.findMany({
     where: {
       station: { venueId: input.venueId, kind: input.stationKind, isActive: true },
-      updatedAt: {
-        ...(input.cursor ? { gt: input.cursor } : {}),
-        lte: snapshotAt,
-      },
-      ...(full ? { status: { notIn: ['HANDED_OFF', 'CANCELLED'] } } : {}),
+      ...(full
+        ? {
+            status: { notIn: ['HANDED_OFF', 'CANCELLED'] },
+            updatedAt: { lte: snapshotAt },
+            orderItem: {
+              round: { session: { status: { notIn: ['CLOSED', 'CANCELLED'] } } },
+            },
+          }
+        : {
+            OR: [
+              { updatedAt: { gt: input.cursor, lte: snapshotAt } },
+              {
+                orderItem: {
+                  round: {
+                    session: { updatedAt: { gt: input.cursor, lte: snapshotAt } },
+                  },
+                },
+              },
+            ],
+          }),
     },
     orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
     include: {
@@ -91,7 +111,9 @@ export async function getProductionQueueDelta(input: {
           round: {
             select: {
               sequence: true,
-              session: { select: { table: { select: { label: true } } } },
+              session: {
+                select: { status: true, table: { select: { label: true } } },
+              },
             },
           },
         },
@@ -103,6 +125,7 @@ export async function getProductionQueueDelta(input: {
     stationKind: input.stationKind,
     cursor: snapshotAt.toISOString(),
     full,
+    readyHandoffSla,
     tickets: tickets.map(mapQueueTicket),
   };
 }
@@ -116,7 +139,9 @@ type ProductionQueuePayload = Prisma.ProductionTicketGetPayload<{
         round: {
           select: {
             sequence: true;
-            session: { select: { table: { select: { label: true } } } };
+            session: {
+              select: { status: true; table: { select: { label: true } } };
+            };
           };
         };
       };
@@ -127,7 +152,10 @@ type ProductionQueuePayload = Prisma.ProductionTicketGetPayload<{
 function mapQueueTicket(ticket: ProductionQueuePayload): ProductionQueueTicket {
   return {
     id: ticket.id,
-    status: ticket.status,
+    status: queueTicketStatusForSession(
+      ticket.status,
+      ticket.orderItem.round.session.status,
+    ),
     stationKind: ticket.station.kind,
     stationName: ticket.station.name,
     tableLabel: ticket.orderItem.round.session.table.label,
@@ -137,7 +165,12 @@ function mapQueueTicket(ticket: ProductionQueuePayload): ProductionQueueTicket {
     modifiers: ticket.orderItem.modifiers.map((modifier) => modifier.nameSnapshot),
     quantity: ticket.orderItem.quantity,
     note: ticket.orderItem.guestNote,
+    recommendedPreparationMinutes: ticket.orderItem.recommendedPreparationMinutesSnapshot,
+    criticalPreparationMinutes: ticket.orderItem.criticalPreparationMinutesSnapshot,
     queuedAt: ticket.queuedAt.toISOString(),
+    acceptedAt: ticket.acceptedAt?.toISOString() ?? null,
+    startedAt: ticket.startedAt?.toISOString() ?? null,
+    readyAt: ticket.readyAt?.toISOString() ?? null,
     updatedAt: ticket.updatedAt.toISOString(),
   };
 }

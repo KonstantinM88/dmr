@@ -40,12 +40,39 @@ export async function OrderStatusPanel({ rounds, locale, currency, approvalMode 
     REJECTED: 'rejected',
     CANCELLED: 'cancelled',
   };
+  const activeItems = rounds.flatMap((round) => round.items).filter(
+    (item) => !['REJECTED', 'CANCELLED', 'SERVED'].includes(item.status),
+  );
+  const readyCount = activeItems.filter((item) => item.status === 'READY').length;
+  const preparingCount = activeItems.filter((item) => item.status === 'IN_PREPARATION').length;
+  const acceptedCount = activeItems.filter((item) => item.status === 'ACCEPTED').length;
+  const allAcceptedItemsServed = rounds.some((round) =>
+    round.items.some((item) => item.status === 'SERVED'),
+  ) && activeItems.length === 0;
 
   return (
     <section className="pt-8" aria-labelledby="order-status-heading">
       <h2 id="order-status-heading" className="eyebrow border-b border-[var(--color-brass-dim)] pb-2">
         {t('sectionTitle')}
       </h2>
+
+      {readyCount > 0 ? (
+        <div role="status" aria-live="polite" className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-sage)]/50 bg-[var(--color-sage)]/5 p-4 text-sm text-[var(--color-sage)]">
+          {t('guestReadySignal', { count: readyCount })}
+        </div>
+      ) : preparingCount > 0 ? (
+        <div role="status" className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-brass-dim)] bg-[var(--color-brass)]/5 p-4 text-sm text-[var(--color-brass)]">
+          {t('guestPreparingSignal', { count: preparingCount })}
+        </div>
+      ) : acceptedCount > 0 ? (
+        <div role="status" className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-ink-700)] p-4 text-sm text-[var(--color-paper-dim)]">
+          {t('guestAcceptedSignal', { count: acceptedCount })}
+        </div>
+      ) : allAcceptedItemsServed ? (
+        <div role="status" aria-live="polite" className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-sage)]/50 bg-[var(--color-sage)]/5 p-4 text-sm text-[var(--color-sage)]">
+          {t('guestServedSignal')}
+        </div>
+      ) : null}
 
       <p className="pt-3 text-xs text-[var(--color-paper-faint)]">
         {approvalMode === 'AUTO_ACCEPT' ? t('reorderAutoAccept') : t('reorderNeedsWaiter')}

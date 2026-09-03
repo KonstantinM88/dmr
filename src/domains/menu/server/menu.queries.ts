@@ -159,7 +159,7 @@ export async function getPublishedMenu(venueSlug: string, locale: string): Promi
   };
 }
 
-/** Сводка меню для admin-панели: без переводов вариантов и медиа. */
+/** Рабочий каталог admin-панели: карточки, media-preview и production SLA. */
 export async function getMenuOverview(venueSlug: string, locale: string) {
   const categories = await prisma.menuCategory.findMany({
     where: { venue: { slug: venueSlug } },
@@ -168,7 +168,12 @@ export async function getMenuOverview(venueSlug: string, locale: string) {
       translations: true,
       items: {
         orderBy: { sortOrder: 'asc' },
-        include: { translations: true, station: true, taxProfile: true },
+        include: {
+          translations: true,
+          station: true,
+          taxProfile: true,
+          media: { where: { status: 'READY' }, orderBy: { sortOrder: 'asc' } },
+        },
       },
     },
   });
@@ -178,16 +183,34 @@ export async function getMenuOverview(venueSlug: string, locale: string) {
     slug: category.slug,
     title: pickTranslation(category.translations, locale)?.title ?? category.slug,
     isPublished: category.isPublished,
-    items: category.items.map((item) => ({
+    items: category.items.map((item) => {
+      const translation = pickTranslation(item.translations, locale);
+      return {
       id: item.id,
       slug: item.slug,
-      name: pickTranslation(item.translations, locale)?.name ?? item.slug,
+      name: translation?.name ?? item.slug,
+      shortDescription: translation?.shortDescription ?? null,
+      fullDescription: translation?.fullDescription ?? null,
+      ingredients: translation?.ingredients ?? null,
       basePriceCents: item.basePriceCents,
       isPublished: item.isPublished,
       isAvailable: item.isAvailable,
       stationName: item.station?.name ?? null,
+      stationKind: item.station?.kind ?? null,
       taxRateBasisPoints: item.taxProfile?.rateBasisPoints ?? null,
-    })),
+      recommendedPreparationMinutes: item.recommendedPreparationMinutes,
+      criticalPreparationMinutes: item.criticalPreparationMinutes,
+      media: item.media.map((asset) => ({
+        id: asset.id,
+        kind: asset.kind,
+        url: asset.url,
+        posterUrl: asset.posterUrl,
+        altText: asset.altText,
+        width: asset.width,
+        height: asset.height,
+      })),
+    };
+    }),
   }));
 }
 

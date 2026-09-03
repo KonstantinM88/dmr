@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getPublishedMenu } from '@/domains/menu/server/menu.queries';
 import { resolveTableByToken } from '@/domains/tables/server/table.service';
@@ -17,6 +18,7 @@ import { PollingRefresh } from '@/components/realtime/PollingRefresh';
 import { WaiterCallButton } from '@/components/service/WaiterCallButton';
 import { getActiveWaiterCall } from '@/domains/service-requests/server/waiter-call.service';
 import { callWaiterAction, cancelWaiterCallAction, submitOrderAction } from './actions';
+import { isSupportedLocale } from '@/i18n/routing';
 
 /**
  * Публичное меню и заказ (Server Component).
@@ -30,6 +32,7 @@ export default async function MenuPage(props: {
 }) {
   const { locale } = await props.params;
   const { table: tableFlag } = await props.searchParams;
+  if (!isSupportedLocale(locale)) notFound();
   setRequestLocale(locale);
 
   const t = await getTranslations('menu');

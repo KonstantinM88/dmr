@@ -22,10 +22,13 @@ export type AuditInput = {
  * Append-only журнал административных действий (docs/data-model.md §8).
  * Операции update/delete для AuditLog отсутствуют намеренно.
  */
-export async function recordAuditLog(input: AuditInput): Promise<void> {
+export async function recordAuditLog(
+  input: AuditInput,
+  tx: Pick<typeof prisma, 'auditLog'> = prisma,
+): Promise<void> {
   const env = getEnv();
 
-  await prisma.auditLog.create({
+  await tx.auditLog.create({
     data: {
       venueId: input.venueId ?? null,
       actorType: input.actorType,

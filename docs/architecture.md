@@ -85,6 +85,13 @@ Hostinger Cloud/VPS без переписывания бизнес-логики.
 в скрытой вкладке частота снижается. Есть reconnect по `online` и
 `visibilitychange`, последний snapshot сохраняется при offline.
 
+Операционное представление поверх этого транспорта не создаёт отдельную
+notification-таблицу: `SUBMITTED OrderRound`, `QUEUED/READY ProductionTicket`
+и связанные `OrderItem` остаются единственными источниками истины. Кухня/бар
+получают сигнал о новых `QUEUED`, официант — о `SUBMITTED` и `READY`, гость —
+визуальный серверный статус до `SERVED`. Локальный opt-in звук не заменяет
+очередь и не влияет на доменные переходы.
+
 Reconnect и восстановление состояния — обязательны для обеих реализаций.
 Внешний realtime-provider или Redis не подключаются без измеренной
 необходимости и согласования владельца.
@@ -157,5 +164,9 @@ admin. Заказы/статусы/платежи/разрешения — вс�
 - Production: `/[locale]/produktion/kueche`, `/[locale]/produktion/bar`.
 - Polling: `/api/production/queue` (staff-auth + station RBAC, cursor delta),
   `/api/live/guest` и `/api/live/service` (лёгкие change feeds, no-store).
-- Admin sold-out: `/[locale]/admin/speisekarte` меняет availability через
-  server action; guest change feed подхватывает обновление без reload.
+- Admin menu dashboard: `/[locale]/admin/speisekarte` показывает rich-карточки
+  текущего меню с image/video metadata, описанием, ценой, станцией и
+  availability. Там же `MANAGE_MENU` задаёт рекомендуемый/критический SLA
+  приготовления, а `MANAGE_OPERATIONAL_SETTINGS` — общий SLA выдачи готовой
+  позиции. Все мутации проходят server actions и аудит; guest change feed
+  подхватывает availability без reload.

@@ -6,6 +6,16 @@ import type {
 
 const TERMINAL_STATUSES = new Set<ProductionTicketStatus>(['HANDED_OFF', 'CANCELLED']);
 
+/** Закрытая сессия превращает любой оставшийся тикет в tombstone для UI. */
+export function queueTicketStatusForSession(
+  ticketStatus: ProductionTicketStatus,
+  sessionStatus: string,
+): ProductionTicketStatus {
+  return sessionStatus === 'CLOSED' || sessionStatus === 'CANCELLED'
+    ? 'CANCELLED'
+    : ticketStatus;
+}
+
 /**
  * Applies a cursor delta to the last usable queue snapshot. Terminal tickets
  * act as tombstones, so reconnecting clients remove cards without needing a

@@ -32,6 +32,7 @@ export async function transitionTicketAction(payload: unknown): Promise<Transiti
 
   revalidatePath('/[locale]/produktion/kueche', 'page');
   revalidatePath('/[locale]/produktion/bar', 'page');
+  revalidatePath('/[locale]/service', 'page');
   revalidatePath('/[locale]/service/[sessionId]', 'page');
   revalidatePath('/[locale]', 'page');
   return result;

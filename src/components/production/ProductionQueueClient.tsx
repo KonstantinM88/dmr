@@ -9,6 +9,9 @@ import type {
   TransitionTicketResult,
 } from '@/domains/production/shared/types';
 import { mergeProductionQueueDelta } from '@/domains/production/shared/queue';
+import { WaitingDuration } from '@/components/service/WaitingDuration';
+import { OperationalSignal } from '@/components/realtime/OperationalSignal';
+import { ProductionSlaIndicator } from '@/components/production/ProductionSlaIndicator';
 
 type Props = {
   initial: ProductionQueueDelta;
@@ -18,6 +21,7 @@ type Props = {
 export function ProductionQueueClient({ initial, action }: Props) {
   const t = useTranslations('production');
   const [tickets, setTickets] = useState(initial.tickets);
+  const [readyHandoffSla, setReadyHandoffSla] = useState(initial.readyHandoffSla);
   const [connection, setConnection] = useState<'live' | 'reconnecting' | 'offline'>('live');
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyTicketId, setBusyTicketId] = useState<string | null>(null);
@@ -27,6 +31,7 @@ export function ProductionQueueClient({ initial, action }: Props) {
 
   const applyDelta = useCallback((delta: ProductionQueueDelta) => {
     cursorRef.current = delta.cursor;
+    setReadyHandoffSla(delta.readyHandoffSla);
     setTickets((current) => mergeProductionQueueDelta(current, delta));
   }, []);
 
@@ -106,10 +111,28 @@ export function ProductionQueueClient({ initial, action }: Props) {
               ? t('connectionOffline')
               : t('connectionReconnecting')}
         </p>
-        <span className="font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]">
-          {t('ticketCount', { count: tickets.length })}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]">
+            {t('ticketCount', { count: tickets.length })}
+          </span>
+          <OperationalSignal
+            channel={`production-${initial.stationKind.toLowerCase()}`}
+            signalIds={tickets.filter((ticket) => ticket.status === 'QUEUED').map((ticket) => ticket.id)}
+          />
+        </div>
       </div>
+
+      {tickets.some((ticket) => ticket.status === 'QUEUED') && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10 p-3 text-sm text-[var(--color-clay)]"
+        >
+          {t('newTicketsWaiting', {
+            count: tickets.filter((ticket) => ticket.status === 'QUEUED').length,
+          })}
+        </div>
+      )}
 
       {actionError && (
         <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-clay)]/40 bg-[var(--color-clay)]/10 p-3 text-sm text-[var(--color-clay)]">
@@ -127,7 +150,13 @@ export function ProductionQueueClient({ initial, action }: Props) {
             return (
               <li
                 key={ticket.id}
-                className="rounded-[var(--radius-card)] border border-[var(--color-ink-700)] bg-[var(--color-ink-900)] p-4"
+                className={`rounded-[var(--radius-card)] border bg-[var(--color-ink-900)] p-4 ${
+                  ticket.status === 'QUEUED'
+                    ? 'border-[var(--color-clay)]/60'
+                    : ticket.status === 'READY'
+                      ? 'border-[var(--color-sage)]/60'
+                      : 'border-[var(--color-ink-700)]'
+                }`}
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="eyebrow">{t('tableRound', { table: ticket.tableLabel, round: ticket.roundSequence })}</p>
@@ -152,6 +181,25 @@ export function ProductionQueueClient({ initial, action }: Props) {
                   </p>
                 )}
                 <p className="mt-4 text-xs text-[var(--color-paper-faint)]">{ticket.stationName}</p>
+                <WaitingDuration
+                  since={statusStartedAt(ticket)}
+                  prefix={t(`timers.${ticket.status}`)}
+                  className="mt-1 block font-[family-name:var(--font-mono)] text-xs text-[var(--color-paper-faint)]"
+                />
+                <ProductionSlaIndicator
+                  since={ticket.status === 'READY' ? (ticket.readyAt ?? ticket.updatedAt) : ticket.queuedAt}
+                  mode={ticket.status === 'READY' ? 'HANDOFF' : 'PREPARATION'}
+                  warningMinutes={
+                    ticket.status === 'READY'
+                      ? readyHandoffSla.warningMinutes
+                      : ticket.recommendedPreparationMinutes
+                  }
+                  criticalMinutes={
+                    ticket.status === 'READY'
+                      ? readyHandoffSla.criticalMinutes
+                      : ticket.criticalPreparationMinutes
+                  }
+                />
 
                 {next ? (
                   <button
@@ -174,6 +222,13 @@ export function ProductionQueueClient({ initial, action }: Props) {
       )}
     </div>
   );
+}
+
+function statusStartedAt(ticket: ProductionQueueTicket): string {
+  if (ticket.status === 'READY') return ticket.readyAt ?? ticket.updatedAt;
+  if (ticket.status === 'IN_PROGRESS') return ticket.startedAt ?? ticket.updatedAt;
+  if (ticket.status === 'ACCEPTED') return ticket.acceptedAt ?? ticket.updatedAt;
+  return ticket.queuedAt;
 }
 
 function nextTransition(

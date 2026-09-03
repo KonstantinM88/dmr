@@ -68,6 +68,8 @@ export async function decideRoundAction(payload: unknown) {
   );
 
   revalidatePath('/[locale]/service/[sessionId]', 'page');
+  revalidatePath('/[locale]/service', 'page');
+  revalidatePath('/[locale]', 'page');
   return result;
 }
 
@@ -102,6 +104,8 @@ export async function markServedAction(orderItemId: string) {
   });
 
   revalidatePath('/[locale]/service/[sessionId]', 'page');
+  revalidatePath('/[locale]/service', 'page');
+  revalidatePath('/[locale]', 'page');
   return result;
 }
 

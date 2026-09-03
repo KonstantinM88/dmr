@@ -1,5 +1,10 @@
 /** Client-safe типы заказов (Этап 2). Без Prisma. */
 
+import type {
+  ProductionStationKind,
+  ProductionTicketStatus,
+} from '@/domains/production/shared/types';
+
 export const ORDER_ROUND_STATUSES = [
   'SUBMITTED',
   'ACCEPTED',
@@ -47,6 +52,12 @@ export type OrderItemView = {
   status: OrderItemStatus;
   seatLabel: string | null;
   note: string | null;
+  productionStatus?: ProductionTicketStatus | null;
+  productionStatusSince?: string | null;
+  productionQueuedAt?: string | null;
+  stationKind?: ProductionStationKind | null;
+  recommendedPreparationMinutes?: number | null;
+  criticalPreparationMinutes?: number | null;
 };
 
 export type OrderRoundView = {

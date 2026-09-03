@@ -310,19 +310,21 @@ model MenuCategoryTranslation {
 }
 
 model MenuItem {
-  id             String     @id @default(cuid())
-  venueId        String
-  categoryId     String
-  stationId      String?
-  taxProfileId   String?
-  slug           String
-  basePriceCents Int
-  isPublished    Boolean    @default(false)
-  isAvailable    Boolean    @default(true)
-  spiceLevel     SpiceLevel @default(NONE)
-  sortOrder      Int        @default(0)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id                            String     @id @default(cuid())
+  venueId                       String
+  categoryId                    String
+  stationId                     String?
+  taxProfileId                  String?
+  slug                          String
+  basePriceCents                Int
+  recommendedPreparationMinutes Int?
+  criticalPreparationMinutes    Int?
+  isPublished                   Boolean    @default(false)
+  isAvailable                   Boolean    @default(true)
+  spiceLevel                    SpiceLevel @default(NONE)
+  sortOrder                     Int        @default(0)
+  createdAt                     DateTime   @default(now())
+  updatedAt                     DateTime   @updatedAt
 
   venue          Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
   category       MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -818,15 +820,17 @@ model OrderItem {
   guestNote              String?
 
   /// --- immutable snapshot на момент заказа ---
-  nameSnapshot        String
-  variantNameSnapshot String?
-  localeSnapshot      String
-  unitPriceCents      Int
-  quantity            Int
-  lineTotalCents      Int
-  taxRateBasisPoints  Int
-  taxAmountCents      Int
-  stationKindSnapshot ProductionStationKind?
+  nameSnapshot                          String
+  variantNameSnapshot                   String?
+  localeSnapshot                        String
+  unitPriceCents                        Int
+  quantity                              Int
+  lineTotalCents                        Int
+  taxRateBasisPoints                    Int
+  taxAmountCents                        Int
+  stationKindSnapshot                   ProductionStationKind?
+  recommendedPreparationMinutesSnapshot Int?
+  criticalPreparationMinutesSnapshot    Int?
 
   /// --- финансовая привязка (заполняется с Этапа 4) ---
   allocatedPaidCents Int @default(0)

@@ -77,6 +77,32 @@ export type MenuView = {
   categories: MenuCategoryView[];
 };
 
+export type AdminMenuItemView = {
+  id: string;
+  slug: string;
+  name: string;
+  shortDescription: string | null;
+  fullDescription: string | null;
+  ingredients: string | null;
+  basePriceCents: number;
+  isPublished: boolean;
+  isAvailable: boolean;
+  stationName: string | null;
+  stationKind: 'KITCHEN' | 'BAR' | 'OTHER' | null;
+  taxRateBasisPoints: number | null;
+  recommendedPreparationMinutes: number | null;
+  criticalPreparationMinutes: number | null;
+  media: MenuMedia[];
+};
+
+export type AdminMenuCategoryView = {
+  id: string;
+  slug: string;
+  title: string;
+  isPublished: boolean;
+  items: AdminMenuItemView[];
+};
+
 /** Минимальная цена позиции для списка: база или самый дешёвый вариант. */
 export function displayPriceCents(item: MenuItemView): number {
   const available = item.variants.filter((variant) => variant.isAvailable);

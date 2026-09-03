@@ -71,7 +71,7 @@ Claude Code / Codex и других агентов. Перед существе�
 8. `docs/` — архитектурные решения; при расхождении с кодом код имеет
    приоритет, но расхождение нужно исправить в docs или в коде.
 
-## Текущее состояние установки (2026-09-02)
+## Текущее состояние установки (2026-09-03)
 
 - Этапы 1–4 и согласованная часть Этапа 5 установлены и локально проверены
   в `D:\projects\dmr`. Остальной scope Этапа 5 не расширять без новой команды.
@@ -86,32 +86,38 @@ Claude Code / Codex и других агентов. Перед существе�
   `20260817233152_stage2_sessions_orders` и
   `20260818004303_stage3_production_queues`,
   `20260818022747_stage4_billing_payments`,
-  `20260818052000_stage5_split_cash_waiter_calls` и
-  `20260902174500_stage5_quantity_split_payments`; Stage 2 migration содержит
+  `20260818052000_stage5_split_cash_waiter_calls`,
+  `20260902174500_stage5_quantity_split_payments` и
+  `20260903013000_menu_production_sla`; Stage 2 migration содержит
   обязательный partial unique index `dining_sessions_active_per_table`,
   Stage 3 — `ProductionTicket` и безопасный backfill существующих позиций,
   Stage 4 — финансовые таблицы, partial unique/provider indexes и денежные
   CHECK constraints, Stage 5 — WaiterCall, планы распределения попыток,
   связь CashSettlement→Payment и дополнительные partial/CHECK constraints;
   quantity-split migration добавляет quantity в план/факт allocations и
-  expected remainder для optimistic concurrency.
+  expected remainder для optimistic concurrency; menu SLA migration добавляет
+  nullable пару recommended/critical preparation minutes в MenuItem и её
+  immutable snapshot в OrderItem с DB CHECK-ограничениями 1–240 минут.
   На дату записи Prisma сообщает `Database schema is up to date`.
 - Сид выполнен: 1 Venue, 8 DiningTable, 8 активных TableQrToken, 9 MenuItem,
-  1 StaffUser-владелец, 6 ролей. Сид идемпотентный и после Stage 2 повторно
-  не запускался. Новые session/order tables изначально пусты.
-- Последний ручной тест Tisch 1 завершён: счёт 35,50 EUR оплачен двумя
-  CASH-платежами — 3,20 EUR (получено 5,00, сдача 1,80) и 32,30 EUR
-  (получено 40,00, сдача 7,70); allocations сходятся, Bill `PAID`, остаток 0,
-  DiningSession `CLOSED`. Последняя оплата ещё была whole-line: 2 пива одной
-  allocation; quantity-split UI установлен после этого теста.
+  0 MediaAsset, 1 StaffUser-владелец, 6 ролей. Сид идемпотентный и после
+  Stage 2 повторно не запускался. До подключения media storage admin-карточки
+  показывают предусмотренный placeholder вместо фото/видео.
+- 2026-09-03 по прямой команде владельца очищены все закрытые локальные
+  тестовые посещения: удалены 7 `CLOSED` DiningSession, 13 OrderRound,
+  28 OrderItem/ProductionTicket и 12 тестовых Payment. Контроль после
+  транзакции: sessions/rounds/items/tickets/bills/payments = 0; Venue,
+  9 MenuItem и StaffUser-владелец сохранены. Следующий DEV QR начинает
+  полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 278
-  unit-тестов, migration status и реальные Neon probes. Backfill подтвердил
+- Последняя проверка успешна: ESLint, TypeScript, production build, 284
+  unit-тестов, migration status, реальные Neon probes, `/api/health`,
+  `/api/ready` и RU QR browser smoke. Backfill подтвердил
   25 planned/22 final allocations без quantity/amount нарушений; partial-unit
   SQL обновил ровно одну из двух единиц и полностью откатился. Встроенный
   browser не содержит staff-сессии владельца, поэтому авторизованный
-  визуальный quantity-split оставлен владельцу; Stage 4 Playwright 20/20
+  визуальный production/service flow оставлен владельцу; Stage 4 Playwright 20/20
   остаётся последним полным E2E. Chromium установлен.
 - Сейчас последняя тестовая DiningSession Tisch 1 `CLOSED`; следующий DEV QR
   заказ создаст новую сессию и нового participant для повторного smoke.
@@ -208,6 +214,32 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
   service 4/15, guest 8/15. Terminal tickets приходят как tombstones; reconnect
   сохраняет snapshot. SSE не включать до измерения на реальном Hostinger,
   контракт — `docs/realtime-contract.md`.
+- Production full snapshot исключает тикеты закрытых/отменённых сессий.
+  Delta отслеживает также `DiningSession.updatedAt` и возвращает оставшиеся
+  тикеты закрывшейся сессии как `CANCELLED` tombstones, чтобы уже открытая
+  station queue очистилась без ручного reload. Данные в БД при этом не
+  удаляются автоматически.
+- Операционные сигналы не имеют отдельной таблицы: кухня/бар получают
+  визуальный attention и локальный opt-in звук для новых `QUEUED`, официант —
+  для `SUBMITTED` раундов и `READY` позиций, guest — серверные сообщения
+  принят/готовится/готов/подан. Все экраны показывают живую длительность
+  текущего ожидания; звуковая настройка хранится локально и не является
+  источником истины. Выдача из service board выполняет существующую атомарную
+  пару `ProductionTicket READY→HANDED_OFF` + `OrderItem READY→SERVED`.
+- Waiter service board и detail стола обязаны показывать все активные
+  production-позиции, а не только готовые: точное состояние
+  `QUEUED/ACCEPTED/IN_PROGRESS/READY`, станцию KITCHEN/BAR и живую
+  длительность текущего этапа. Сортировка — самое долгое ожидание первым;
+  `READY` дополнительно даёт действие подтверждения выдачи.
+- Production SLA настраивается без выдуманных defaults. У MenuItem оба поля
+  `recommendedPreparationMinutes`/`criticalPreparationMinutes` либо NULL,
+  либо целые 1–240 с critical >= recommended. При создании OrderItem они
+  копируются в immutable snapshot: изменение карточки не переписывает уже
+  принятый заказ и будущую статистику. Для `QUEUED/ACCEPTED/IN_PROGRESS`
+  таймер сравнивается с snapshot от `queuedAt`; для `READY` используются
+  общие пороги `VenueSetting(key=production.ready_handoff_sla)` от `readyAt`.
+  UI: зелёный до recommended, жёлтый после, красный после critical; при NULL
+  явно показывает, что SLA не настроен.
 - Оперативный sold-out меняет `MenuItem.isAvailable`, аудируется и доходит до
   гостя через change feed; сервер заказа всё равно повторно проверяет наличие.
 - Не более одной незавершённой DiningSession на стол гарантируют и
@@ -466,6 +498,10 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-03 | `/[locale]/admin` оформлен как расширяемый dashboard, а `/[locale]/admin/speisekarte` — как rich-каталог карточек с фото/видео preview, описанием, составом, ценой, станцией, публикацией и availability. В карточке с `MANAGE_MENU` задаётся recommended/critical preparation SLA; общий READY→handoff SLA требует `MANAGE_OPERATIONAL_SETTINGS`. Миграция `20260903013000_menu_production_sla` добавила MenuItem-поля и OrderItem snapshot с CHECK constraints. Кухня/бар/официант показывают зелёный/жёлтый/красный SLA либо явное «не настроен». Изменения настроек аудируются. | По команде владельца заложить основу admin dashboard для будущих модулей и хранить реальные нормативы в карточках продуктов. Media upload/edit и CRUD содержимого пока не включены: карточки отображают уже существующие MediaAsset/translation данные, production-файлы по-прежнему требуют выбранного object storage. |
+| 2026-09-03 | Официантский service board и detail стола расширены с ready-only до полного контроля незавершённого производства. Для каждой позиции показываются количество, кухня/бар, точный статус `QUEUED/ACCEPTED/IN_PROGRESS/READY` и живое время в текущем статусе; самые старые ожидания идут первыми, `READY` сохраняет прямое подтверждение выдачи. Текущий DB probe подтвердил согласованность: кофе и суп `HANDED_OFF/SERVED`, пиво `IN_PROGRESS`, лисички `READY`; свежие логи — 11 production transitions, 2 handoff, 0 ошибок/5xx. | По просьбе владельца не допустить незаметно забытую позицию на кухне или в баре. Schema/migration не менялись; SLA-пороги намеренно не придуманы без бизнес-решения. |
+| 2026-09-03 | Разобран production-тест: действия кухни/бара прошли без Prisma/5xx, но очередь показывала 17 незавершённых тикетов семи уже закрытых посещений. Full snapshot теперь исключает `CLOSED`/`CANCELLED` sessions, delta превращает их тикеты в terminal tombstones. По прямой команде владельца транзакционно удалены все 7 закрытых локальных тестовых сессий: 13 раундов, 28 позиций/тикетов и 12 платежей; Venue/menu/owner сохранены. Invalid locale теперь отклоняется до menu query. Проверены lint, typecheck, production build, 281 unit-тест, health/readiness, корректные 404 invalid locale и чистый stderr после перезапуска. | Очистка только локальной тестовой Neon branch для нового полного прохода. Автоматическое удаление истории при обычном закрытии не добавлялось. |
+| 2026-09-02 | Поверх существующей Stage 3 state machine добавлены сквозные операционные уведомления: новые `SUBMITTED` раунды и `READY` позиции входят в attention board официанта с таймерами и прямым подтверждением выдачи; кухня/бар подсвечивают новые `QUEUED`, показывают длительность каждого этапа и могут подать opt-in звук/vibration; guest видит серверные сигналы принят/готовится/готов/подан. Звук дедуплицируется в рамках вкладки, визуальная DB-очередь остаётся источником истины. Проверены ESLint, TypeScript, production build, 280 unit-тестов, health/readiness, RU QR browser smoke и свежие dev-логи. | По просьбе владельца завершить цепочку guest → waiter → kitchen/bar → waiter → guest с уведомлением каждого участника. Schema/migration не менялись; Browser Audio требует однократного нажатия «Включить звук». Полный авторизованный ручной проход обеих станций оставлен владельцу на новом заказе. |
 | 2026-09-02 | Официант может дробить строку заказа по целым единицам при прямом CASH-расчёте: UI −/+ выбирает quantity от 0 до неоплаченного остатка, сумма считается по snapshot unit price. `PaymentAttemptAllocation` хранит quantity и expectedRemainingCents, `PaymentAllocation` — фактически оплаченное quantity; CASH и Stripe webhook проверяют план, печать показывает количество конкретной части. Миграция `20260902174500_stage5_quantity_split_payments` применена с backfill. Проверены lint, typecheck, build, 278 unit-тестов, migration status, 25/22 старых allocations и rollback-probe одной из двух единиц. | По просьбе владельца разрешить официанту принять оплату за 1 единицу из строки quantity=2. Клиент не передаёт сумму; произвольная сумма и дробление одной единицы остаются вне scope. Последний ручной счёт 35,50 EUR закрыт до установки нового UI, поэтому новый сценарий требуется проверить на свежей сессии. |
 | 2026-09-02 | На наличном экране официанта добавлены быстрые номиналы и живой расчёт сдачи до подтверждения; серверная проверка и integer-cents `CashSettlement` сохранены. Добавлены защищённые venue-scoped печатные маршруты полной внутренней платёжной ведомости и каждой успешной частичной оплаты, обязательная нефискальная маркировка и постоянная кнопка возврата к списку столов на detail-экране. Проверены lint, typecheck, production build, 274 unit-теста и read-only Neon probe: 3 части/69,00 EUR, allocations сходятся, чужой venue получает null. | По просьбе владельца ускорить расчёт наличными, подготовить раздельную печать и навигацию официанта между многими столами. Это внутренние ведомости, не Kassenbon/Rechnung/TSE; schema/migration не менялись. Последний Tisch 1 закрыт, но его 6 production tickets всё ещё QUEUED — отдельное бизнес-решение следующего шага. |
 | 2026-09-02 | На экране решения официанта добавлены кнопки −/+ для изменения количества каждой выбранной позиции до подтверждения (1–50) с немедленным перерасчётом видимой суммы. Server action принимает только item ID/quantity; domain service проверяет venue, SUBMITTED, полный уникальный набор позиций и транзакционно пересчитывает line/tax/remaining/round totals из snapshot-цены до создания ProductionTicket. Изменения количества аудируются в LifecycleEvent/AuditLog. Проверены lint, typecheck, production build, 271 unit-тест, реальный rollback-probe SQL в Neon и HTTP readiness; dev-сервер запущен на 3000 без записи временного PID в документацию. | По просьбе владельца разрешить официанту корректировать количество перед подтверждением. Schema/migration не менялись; quantity после подтверждения остаётся неизменяемым, 0 не заменяет явное отклонение позиции. Текущий Tisch 1 OPEN с одним pending-раундом из пяти позиций сохранён для ручной проверки. |

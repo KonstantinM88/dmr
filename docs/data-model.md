@@ -39,7 +39,10 @@
 - **MenuCategory** + **MenuCategoryTranslation** (`locale`, `title`,
   `description`) — 1:N, fallback на `de` при отсутствии перевода.
 - **MenuItem** + **MenuItemTranslation** (`locale`, `name`,
-  `shortDescription`, `fullDescription`, `ingredients`).
+  `shortDescription`, `fullDescription`, `ingredients`). MenuItem хранит
+  пару операционных нормативов `recommendedPreparationMinutes` и
+  `criticalPreparationMinutes`; оба либо `NULL`, либо целые 1–240, причём
+  критический предел не меньше рекомендуемого.
 - **MenuVariant** + **MenuVariantTranslation** — размеры/варианты с
   собственной ценой.
 - **ModifierGroup** + **ModifierGroupTranslation**,
@@ -143,5 +146,6 @@
 
 `OrderItem` и все финансовые документы хранят собственный snapshot
 (название, вариант, модификаторы, цена, ставка/сумма налога, станция,
+production SLA позиции,
 итог, валюта, время создания). Изменение `MenuItem`/цены/налога **не**
 меняет уже созданные `OrderItem`/`Payment`/`Bill`.

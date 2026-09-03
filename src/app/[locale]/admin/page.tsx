@@ -28,7 +28,14 @@ export default async function AdminHomePage(props: { params: Promise<{ locale: s
 
   return (
     <div className="pt-8">
-      <ul className="flex flex-wrap gap-2">
+      <p className="eyebrow">{t('dashboardEyebrow')}</p>
+      <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl">
+        {t('dashboardTitle')}
+      </h1>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--color-paper-dim)]">
+        {t('dashboardIntro')}
+      </p>
+      <ul className="mt-5 flex flex-wrap gap-2">
         {principal.roles.map((role) => (
           <li
             key={role}

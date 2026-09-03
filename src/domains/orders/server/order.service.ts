@@ -43,6 +43,8 @@ type PreparedLine = {
   menuVariantId: string | null;
   stationId: string | null;
   stationKind: 'KITCHEN' | 'BAR' | 'OTHER' | null;
+  recommendedPreparationMinutes: number | null;
+  criticalPreparationMinutes: number | null;
   nameSnapshot: string;
   variantNameSnapshot: string | null;
   unitPriceCents: number;
@@ -226,6 +228,8 @@ async function createRound(args: {
               taxRateBasisPoints: line.taxRateBasisPoints,
               taxAmountCents: line.taxAmountCents,
               stationKindSnapshot: line.stationKind,
+              recommendedPreparationMinutesSnapshot: line.recommendedPreparationMinutes,
+              criticalPreparationMinutesSnapshot: line.criticalPreparationMinutes,
               remainingCents: line.lineTotalCents,
               modifiers: {
                 create: line.modifiers.map((modifier) => ({
@@ -429,6 +433,8 @@ async function prepareLines(input: SubmitOrderInput, venueId: string): Promise<P
       menuVariantId: variant?.id ?? null,
       stationId: item.stationId,
       stationKind: item.station?.kind ?? null,
+      recommendedPreparationMinutes: item.recommendedPreparationMinutes,
+      criticalPreparationMinutes: item.criticalPreparationMinutes,
       nameSnapshot: pickText(item.translations, input.locale, 'name') ?? item.slug,
       variantNameSnapshot: variant
         ? (pickText(variant.translations, input.locale, 'name') ?? null)

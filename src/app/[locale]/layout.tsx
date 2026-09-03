@@ -34,6 +34,7 @@ export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await props.params;
+  if (!isSupportedLocale(locale)) notFound();
   const t = await getTranslations({ locale, namespace: 'common' });
 
   return {
