@@ -1,5 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
+import { MEDIA_STORAGE_PROVIDERS } from '@/domains/media/shared/types';
 
 /**
  * Контракт переменных окружения (docs/hostinger-deployment.md §3).
@@ -23,7 +24,7 @@ const envSchema = z.object({
   STRIPE_PUBLISHABLE_KEY: z.string().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().default(''),
 
-  MEDIA_STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
+  MEDIA_STORAGE_PROVIDER: z.enum(MEDIA_STORAGE_PROVIDERS).default('local'),
   MEDIA_STORAGE_BUCKET: z.string().default(''),
   MEDIA_STORAGE_REGION: z.string().default(''),
   MEDIA_STORAGE_ENDPOINT: z.string().default(''),
@@ -61,7 +62,8 @@ function parseEnv(): Env {
     if (value.MEDIA_STORAGE_PROVIDER === 'local') {
       throw new Error(
         'MEDIA_STORAGE_PROVIDER=local запрещён в production: локальный диск процесса ' +
-          'не персистентен на Hostinger (docs/hostinger-deployment.md §6).',
+          'не персистентен. Для Vercel-теста закоммиченных файлов используйте ' +
+          'MEDIA_STORAGE_PROVIDER=bundled (docs/hostinger-deployment.md §6).',
       );
     }
     if (!value.NEXT_PUBLIC_SITE_URL.startsWith('https://')) {

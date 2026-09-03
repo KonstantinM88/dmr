@@ -7,6 +7,8 @@ import {
   getMenuOverview,
 } from '@/domains/menu/server/menu.queries';
 import { DEFAULT_VENUE_SLUG } from '@/lib/venue';
+import { getEnv } from '@/lib/env';
+import { canMutateMenuMedia } from '@/domains/media/shared/types';
 import { ProductionSlaEditor } from '@/components/admin/ProductionSlaEditor';
 import { MenuCategoryEditor } from '@/components/admin/MenuCategoryEditor';
 import { MenuItemEditor } from '@/components/admin/MenuItemEditor';
@@ -49,6 +51,11 @@ export default async function AdminMenuPage(props: { params: Promise<{ locale: s
     : null;
 
   const categoryOptions = categories.map((category) => ({ id: category.id, title: category.title }));
+  const runtimeEnv = getEnv();
+  const mediaWritable = canMutateMenuMedia(
+    runtimeEnv.MEDIA_STORAGE_PROVIDER,
+    runtimeEnv.NODE_ENV,
+  );
 
   return (
     <div className="pt-8">
@@ -105,6 +112,7 @@ export default async function AdminMenuPage(props: { params: Promise<{ locale: s
           categories={categories}
           locale={locale}
           references={references}
+          mediaWritable={mediaWritable}
           availabilityAction={setAvailabilityAction}
           slaAction={updatePreparationSlaAction}
           itemEditorAction={saveMenuItemAction}

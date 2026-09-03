@@ -22,6 +22,7 @@ type Props = {
   categories: AdminMenuCategoryView[];
   locale: string;
   references: MenuEditorReferenceData;
+  mediaWritable: boolean;
   availabilityAction: (payload: unknown) => Promise<{ ok: boolean }>;
   slaAction: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
   itemEditorAction: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
@@ -38,6 +39,7 @@ export function MenuCatalogWorkspace({
   categories,
   locale,
   references,
+  mediaWritable,
   availabilityAction,
   slaAction,
   itemEditorAction,
@@ -262,6 +264,7 @@ export function MenuCatalogWorkspace({
                             editorAction={itemEditorAction}
                             categories={categoryOptions}
                             references={references}
+                            mediaWritable={mediaWritable}
                           />
                         </div>
                       </details>

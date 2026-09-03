@@ -6,7 +6,9 @@ import {
 } from '@/domains/media/server/menu-media.service';
 import { MediaValidationError } from '@/domains/media/server/media-processor';
 import { MAX_VIDEO_BYTES } from '@/domains/media/shared/types';
+import { canMutateMenuMedia } from '@/domains/media/shared/types';
 import { isSameOriginRequest } from '@/lib/request-security';
+import { getEnv } from '@/lib/env';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +18,7 @@ export async function POST(request: Request): Promise<Response> {
   const principal = await getStaffPrincipal();
   if (!principal) return jsonError('unauthorized', 401);
   if (!principal.permissions.includes('MANAGE_MENU')) return jsonError('forbidden', 403);
+  if (!mediaMutationsEnabled()) return jsonError('storage_read_only', 503);
 
   const declaredLength = Number(request.headers.get('content-length') ?? '0');
   if (declaredLength > MAX_VIDEO_BYTES + 1_000_000) return jsonError('file_too_large', 413);
@@ -48,6 +51,7 @@ export async function DELETE(request: Request): Promise<Response> {
   const principal = await getStaffPrincipal();
   if (!principal) return jsonError('unauthorized', 401);
   if (!principal.permissions.includes('MANAGE_MENU')) return jsonError('forbidden', 403);
+  if (!mediaMutationsEnabled()) return jsonError('storage_read_only', 503);
 
   try {
     const body = await request.json();
@@ -76,4 +80,9 @@ function responseHeaders(): HeadersInit {
 
 function forwardedIp(headers: Headers): string | undefined {
   return headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+}
+
+function mediaMutationsEnabled(): boolean {
+  const env = getEnv();
+  return canMutateMenuMedia(env.MEDIA_STORAGE_PROVIDER, env.NODE_ENV);
 }

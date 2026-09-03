@@ -111,8 +111,8 @@ Claude Code / Codex и других агентов. Перед существе�
   полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 304
-  unit-теста, migration status, реальные Neon probes, `/api/health`,
+- Последняя проверка успешна: ESLint, TypeScript, production build, 308
+  unit-тестов, migration status, реальные Neon probes, `/api/health`,
   `/api/ready` и RU browser smoke гостевого меню/admin menu editor. Browser
   подтвердил 14 локализованных allergen options, сохранение и предзаполнение
   трёх связей у тестового блюда после reload, публичный вывод названий и
@@ -159,8 +159,11 @@ Claude Code / Codex и других агентов. Перед существе�
   пересмотреть и исключить runtime-загрузки из репозитория.
   `/api/admin/menu/media` требует staff-cookie, `MANAGE_MENU`, same-origin и
   tenant scope. Production local-provider остаётся запрещённым: Vercel
-  показывает только файлы, включённые в deployment, а загрузка новых media
-  во время работы требует S3-compatible adapter/object storage.
+  использует явный read-only `MEDIA_STORAGE_PROVIDER=bundled`, показывает
+  только файлы, включённые в deployment, и скрывает upload/delete controls.
+  API в этом режиме отвечает `503 storage_read_only`. `local` в production
+  по-прежнему останавливает runtime; запись media требует реализованного
+  S3-compatible adapter/object storage.
 
 ## Структура проекта (целевая, создаётся поэтапно)
 
@@ -356,6 +359,10 @@ service routes `/[locale]/service[/[sessionId]]`, admin tables/QR route
 `MEDIA_STORAGE_PUBLIC_BASE_URL`, `CRON_SECRET`, `SEED_OWNER_EMAIL`,
 `SEED_OWNER_PASSWORD`.
 
+`MEDIA_STORAGE_PROVIDER`: `local` — writable только локально; `bundled` —
+read-only файлы из Git/deployment для временного Vercel-теста; `s3` — целевой
+production provider после реализации и настройки адаптера.
+
 Stripe contract Этапа 4: все три переменные либо пусты, либо заданы вместе.
 Пока они пусты, приложение работает с явно отключённой оплатой. Разрешены
 только test-mode префиксы `sk_test_`, `pk_test_`, `whsec_`; значения никогда
@@ -455,6 +462,8 @@ npm run db:studio
   deployment-only проверки пропускаются только при
   `NEXT_PHASE=phase-production-build`; реальный production runtime всё равно
   запрещает `MEDIA_STORAGE_PROVIDER=local` и требует HTTPS site URL.
+  Временный Vercel-тест закоммиченных media использует только явный read-only
+  `MEDIA_STORAGE_PROVIDER=bundled`; не подменять им рабочее object storage.
 - Не подменять `MEDIA_STORAGE_PROVIDER=s3` фиктивно только ради зелёной
   сборки. До выбора object storage локально остаётся `local`.
 - Production build загружает Bricolage Grotesque, Karla и IBM Plex Mono с
@@ -538,6 +547,7 @@ npm run db:studio
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-04 | Исправлен runtime 500 первого Vercel deployment: добавлен явный `MEDIA_STORAGE_PROVIDER=bundled` для read-only показа закоммиченных `public/uploads` файлов. `local` остаётся запрещённым в production; bundled UI скрывает upload/delete, API возвращает `503 storage_read_only`, storage adapter не допускает запись. Проверены lint, typecheck, production build, 308 unit-тестов и отдельный production-smoke: health ok, Neon ready, `/ru` 200, bundled media 200. | Vercel build был успешен, но `/de`, `/ru` и favicon падали из-за собственной production env-проверки. Для следующего deployment нужно заменить значение Vercel env `MEDIA_STORAGE_PROVIDER` с `local` на `bundled`; постоянный production по-прежнему требует S3-compatible storage. |
 | 2026-09-03 | В редактор продукта добавлен локализованный multi-select полного справочника аллергенов EU-14, видимые allergen badges в admin-карточке, server-side проверка уникальных существующих ID и атомарная синхронизация `MenuItemAllergen`. Публичное меню продолжает получать названия через существующий DE/RU translation fallback. Загруженные владельцем media проверены на диске и в browser: изображения нормализованы в WebP, видео — в WebM с WebP-постерами, WebM открывается в полноэкранном viewer. Проверены lint, typecheck, production build, 304 unit-теста, health/readiness и свежий dev-log без ошибок. | Устранён разрыв: schema, seed и guest query поддерживали аллергены, но admin editor раньше их не загружал и не сохранял. Schema/migration не менялись. |
 | 2026-09-03 | `/[locale]/admin` оформлен как расширяемый dashboard, а `/[locale]/admin/speisekarte` — как rich-каталог карточек с фото/видео preview, описанием, составом, ценой, станцией, публикацией и availability. В карточке с `MANAGE_MENU` задаётся recommended/critical preparation SLA; общий READY→handoff SLA требует `MANAGE_OPERATIONAL_SETTINGS`. Миграция `20260903013000_menu_production_sla` добавила MenuItem-поля и OrderItem snapshot с CHECK constraints. Кухня/бар/официант показывают зелёный/жёлтый/красный SLA либо явное «не настроен». Изменения настроек аудируются. | По команде владельца заложить основу admin dashboard для будущих модулей и хранить реальные нормативы в карточках продуктов. Media upload/edit и CRUD содержимого пока не включены: карточки отображают уже существующие MediaAsset/translation данные, production-файлы по-прежнему требуют выбранного object storage. |
 | 2026-09-03 | Официантский service board и detail стола расширены с ready-only до полного контроля незавершённого производства. Для каждой позиции показываются количество, кухня/бар, точный статус `QUEUED/ACCEPTED/IN_PROGRESS/READY` и живое время в текущем статусе; самые старые ожидания идут первыми, `READY` сохраняет прямое подтверждение выдачи. Текущий DB probe подтвердил согласованность: кофе и суп `HANDED_OFF/SERVED`, пиво `IN_PROGRESS`, лисички `READY`; свежие логи — 11 production transitions, 2 handoff, 0 ошибок/5xx. | По просьбе владельца не допустить незаметно забытую позицию на кухне или в баре. Schema/migration не менялись; SLA-пороги намеренно не придуманы без бизнес-решения. |

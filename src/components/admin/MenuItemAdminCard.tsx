@@ -20,9 +20,10 @@ type Props = {
   editorAction: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
   categories: Pick<AdminMenuCategoryView, 'id' | 'title'>[];
   references: MenuEditorReferenceData;
+  mediaWritable: boolean;
 };
 
-export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction, editorAction, categories, references }: Props) {
+export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction, editorAction, categories, references, mediaWritable }: Props) {
   const t = useTranslations('admin');
   const image = item.media.find((asset) => asset.kind === 'IMAGE');
   const video = item.media.find((asset) => asset.kind === 'VIDEO');
@@ -143,7 +144,7 @@ export function MenuItemAdminCard({ item, locale, availabilityAction, slaAction,
           </div>
         </details>
 
-        <MenuMediaManager itemId={item.id} media={item.media} />
+        <MenuMediaManager itemId={item.id} media={item.media} writable={mediaWritable} />
       </div>
     </article>
   );

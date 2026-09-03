@@ -8,7 +8,8 @@ import type { MediaUploadResult } from '@/domains/media/shared/types';
 /**
  * Единый интерфейс хранилища медиа (docs/architecture.md §4).
  * Домены и UI никогда не знают конкретного провайдера — он подставляется
- * по MEDIA_STORAGE_PROVIDER. Local adapter разрешён только для разработки.
+ * по MEDIA_STORAGE_PROVIDER. Local adapter разрешён только для разработки,
+ * bundled adapter — только для чтения файлов, включённых в deployment.
  */
 export interface MediaStorageAdapter {
   readonly providerName: string;
@@ -57,6 +58,23 @@ class LocalDevStorageAdapter implements MediaStorageAdapter {
   }
 }
 
+class BundledReadOnlyStorageAdapter implements MediaStorageAdapter {
+  readonly providerName = 'bundled';
+
+  async putObject(): Promise<MediaUploadResult> {
+    throw new Error('Bundled media storage доступно только для чтения.');
+  }
+
+  async getSignedUrl(key: string): Promise<string> {
+    resolveLocalMediaPath(key);
+    return `/uploads/${key.replaceAll('\\', '/')}`;
+  }
+
+  async deleteObject(): Promise<void> {
+    throw new Error('Bundled media storage доступно только для чтения.');
+  }
+}
+
 const LOCAL_UPLOAD_ROOT = path.resolve(process.cwd(), 'public', 'uploads');
 const SAFE_LOCAL_KEY = /^menu\/(images|videos|posters)\/[a-f0-9-]+\.(webp|webm)$/;
 
@@ -79,6 +97,9 @@ export function getMediaStorage(): MediaStorageAdapter {
   switch (env.MEDIA_STORAGE_PROVIDER) {
     case 'local':
       cached = new LocalDevStorageAdapter();
+      return cached;
+    case 'bundled':
+      cached = new BundledReadOnlyStorageAdapter();
       return cached;
     case 's3':
       // Реализация S3-совместимого адаптера добавляется после выбора

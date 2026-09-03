@@ -315,6 +315,7 @@
     "mediaInvalid": "Dateityp oder Dateiinhalt ist ungültig.",
     "mediaLimit": "Maximal 12 Medien pro Produkt sind erlaubt.",
     "mediaLocalOnly": "Lokale Uploads sind nur in der Entwicklungsumgebung verfügbar.",
+    "mediaReadOnly": "Auf dem Vercel-Testsystem sind nur Medien verfügbar, die im Deployment enthalten sind. Dateien lokal hochladen oder entfernen und anschließend neu deployen.",
     "mediaFailed": "Das Medium konnte nicht verarbeitet werden."
   },
   "service": {
