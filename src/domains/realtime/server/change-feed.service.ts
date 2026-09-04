@@ -1,21 +1,22 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import { getActiveSessionForTable } from '@/domains/sessions/server/session.service';
 
 export type ChangeFeedResult = { changed: boolean; cursor: string };
 
 /** Lightweight guest feed: сообщает только факт изменений после cursor. */
 export async function getGuestChangeFeed(
-  tableToken: string | undefined,
+  tableAccess: string | undefined,
   cursor?: Date,
 ): Promise<ChangeFeedResult> {
   const [{ snapshotAt }] = await prisma.$queryRaw<[{ snapshotAt: Date }]>`
     SELECT CURRENT_TIMESTAMP AS "snapshotAt"
   `;
-  if (!tableToken) return { changed: false, cursor: snapshotAt.toISOString() };
-  const table = await resolveTableByToken(tableToken);
-  if (!table) return { changed: false, cursor: snapshotAt.toISOString() };
+  if (!tableAccess) return { changed: false, cursor: snapshotAt.toISOString() };
+  const access = await resolveGuestTableAccess(tableAccess);
+  if (access.status !== 'valid') return { changed: false, cursor: snapshotAt.toISOString() };
+  const table = access.table;
   if (!cursor) return { changed: false, cursor: snapshotAt.toISOString() };
 
   const session = await getActiveSessionForTable(table.tableId);

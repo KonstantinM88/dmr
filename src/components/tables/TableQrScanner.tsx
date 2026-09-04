@@ -15,9 +15,14 @@ type CameraStage =
   | 'starting'
   | 'scanning'
   | 'invalid'
+  | 'image-decoding'
+  | 'image-invalid'
+  | 'image-error'
   | 'denied'
   | 'missing'
   | 'unavailable';
+
+const MAX_QR_IMAGE_BYTES = 12 * 1024 * 1024;
 
 function cameraFailureStage(error: unknown): Extract<CameraStage, 'denied' | 'missing' | 'unavailable'> {
   if (error instanceof DOMException) {
@@ -34,6 +39,8 @@ export function TableQrScanner(props: {
 }) {
   const t = useTranslations('tableQrScanner');
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraFileRef = useRef<HTMLInputElement>(null);
+  const galleryFileRef = useRef<HTMLInputElement>(null);
   const controlsRef = useRef<ScannerControls | null>(null);
   const scannerRunRef = useRef(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -125,6 +132,41 @@ export function TableQrScanner(props: {
     await startScanner();
   }, [startScanner, stopScanner]);
 
+  const decodeQrImage = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    stopScanner();
+
+    if (!file.type.startsWith('image/') || file.size > MAX_QR_IMAGE_BYTES) {
+      setStage('image-error');
+      return;
+    }
+
+    setStage('image-decoding');
+    const objectUrl = URL.createObjectURL(file);
+
+    try {
+      const { BrowserQRCodeReader } = await import('@zxing/browser');
+      const result = await new BrowserQRCodeReader().decodeFromImageUrl(objectUrl);
+      const target = parseTrustedTableQrUrl(result.getText(), [
+        window.location.origin,
+        props.configuredSiteUrl,
+      ]);
+
+      if (!target) {
+        setStage('image-invalid');
+        return;
+      }
+
+      window.location.assign(target);
+    } catch {
+      setStage('image-invalid');
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      if (cameraFileRef.current) cameraFileRef.current.value = '';
+      if (galleryFileRef.current) galleryFileRef.current.value = '';
+    }
+  }, [props.configuredSiteUrl, stopScanner]);
+
   useEffect(
     () => () => stopScanner(),
     [stopScanner],
@@ -148,6 +190,50 @@ export function TableQrScanner(props: {
       : platform === 'ios'
         ? ['deniedIos1', 'deniedIos2', 'deniedIos3'] as const
         : ['deniedOther1', 'deniedOther2', 'deniedOther3'] as const;
+
+  const photoFallbackPanel = (
+    <div className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-brass-dim)] bg-[var(--color-brass)]/5 p-4">
+      <h3 className="font-semibold text-[var(--color-paper)]">{t('photoFallbackTitle')}</h3>
+      <p className="mt-1 text-xs leading-relaxed text-[var(--color-paper-dim)]">
+        {t('photoFallbackBody')}
+      </p>
+
+      <input
+        ref={cameraFileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(event) => void decodeQrImage(event.currentTarget.files?.[0])}
+      />
+      <input
+        ref={galleryFileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => void decodeQrImage(event.currentTarget.files?.[0])}
+      />
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => cameraFileRef.current?.click()}
+          disabled={stage === 'image-decoding'}
+          className="min-h-11 rounded-full bg-[var(--color-brass)] px-4 py-2.5 text-sm font-semibold text-[var(--color-ink-950)] disabled:opacity-50"
+        >
+          {t('takeQrPhoto')}
+        </button>
+        <button
+          type="button"
+          onClick={() => galleryFileRef.current?.click()}
+          disabled={stage === 'image-decoding'}
+          className="min-h-11 rounded-full border border-[var(--color-brass)] px-4 py-2.5 text-sm font-semibold text-[var(--color-brass)] disabled:opacity-50"
+        >
+          {t('chooseQrPhoto')}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -204,24 +290,28 @@ export function TableQrScanner(props: {
               )}
 
               {stage === 'permission' && (
-                <div className="rounded-[var(--radius-card)] border border-[var(--color-brass-dim)] bg-[var(--color-brass)]/5 p-5">
-                  <span aria-hidden="true" className="text-4xl">▣</span>
-                  <h3 className="mt-3 font-[family-name:var(--font-display)] text-xl">{t('permissionTitle')}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">{t('permissionBody')}</p>
-                  <button
-                    type="button"
-                    onClick={() => void requestCameraAccess()}
-                    className="mt-5 min-h-12 w-full rounded-full bg-[var(--color-brass)] px-5 py-3 font-semibold text-[var(--color-ink-950)]"
-                  >
-                    {t('allowCamera')}
-                  </button>
-                </div>
+                <>
+                  <div className="rounded-[var(--radius-card)] border border-[var(--color-brass-dim)] bg-[var(--color-brass)]/5 p-5">
+                    <span aria-hidden="true" className="text-4xl">▣</span>
+                    <h3 className="mt-3 font-[family-name:var(--font-display)] text-xl">{t('permissionTitle')}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">{t('permissionBody')}</p>
+                    <button
+                      type="button"
+                      onClick={() => void requestCameraAccess()}
+                      className="mt-5 min-h-12 w-full rounded-full bg-[var(--color-brass)] px-5 py-3 font-semibold text-[var(--color-ink-950)]"
+                    >
+                      {t('allowCamera')}
+                    </button>
+                  </div>
+                  {photoFallbackPanel}
+                </>
               )}
 
               {stage === 'denied' && (
                 <div className="rounded-[var(--radius-card)] border border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10 p-5">
                   <h3 className="font-[family-name:var(--font-display)] text-xl">{t('deniedTitle')}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">{t('deniedBody')}</p>
+                  {photoFallbackPanel}
                   <ol className="mt-4 space-y-3">
                     {deniedSteps.map((key, index) => (
                       <li key={key} className="flex gap-3 text-sm leading-relaxed">
@@ -232,6 +322,11 @@ export function TableQrScanner(props: {
                       </li>
                     ))}
                   </ol>
+                  {platform === 'android' && (
+                    <p className="mt-4 text-xs leading-relaxed text-[var(--color-paper-dim)]">
+                      {t('deniedAndroidNote')}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => void requestCameraAccess()}
@@ -243,11 +338,45 @@ export function TableQrScanner(props: {
               )}
 
               {(stage === 'missing' || stage === 'unavailable') && (
-                <div className="rounded-[var(--radius-card)] border border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10 p-5">
-                  <h3 className="font-[family-name:var(--font-display)] text-xl">{t(stage === 'missing' ? 'cameraMissingTitle' : 'cameraErrorTitle')}</h3>
+                <>
+                  <div className="rounded-[var(--radius-card)] border border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10 p-5">
+                    <h3 className="font-[family-name:var(--font-display)] text-xl">{t(stage === 'missing' ? 'cameraMissingTitle' : 'cameraErrorTitle')}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">
+                      {t(stage === 'missing' ? 'cameraMissing' : 'cameraError')}
+                    </p>
+                  </div>
+                  {photoFallbackPanel}
+                </>
+              )}
+
+              {(stage === 'image-decoding' || stage === 'image-invalid' || stage === 'image-error') && (
+                <div
+                  role="status"
+                  className={`rounded-[var(--radius-card)] border p-5 ${
+                    stage === 'image-decoding'
+                      ? 'border-[var(--color-ink-700)]'
+                      : 'border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10'
+                  }`}
+                >
+                  <h3 className="font-[family-name:var(--font-display)] text-xl">
+                    {t(
+                      stage === 'image-decoding'
+                        ? 'imageDecodingTitle'
+                        : stage === 'image-error'
+                          ? 'imageErrorTitle'
+                          : 'imageInvalidTitle',
+                    )}
+                  </h3>
                   <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">
-                    {t(stage === 'missing' ? 'cameraMissing' : 'cameraError')}
+                    {t(
+                      stage === 'image-decoding'
+                        ? 'imageDecoding'
+                        : stage === 'image-error'
+                          ? 'imageError'
+                          : 'imageInvalid',
+                    )}
                   </p>
+                  {photoFallbackPanel}
                 </div>
               )}
 

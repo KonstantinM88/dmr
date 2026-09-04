@@ -17,7 +17,7 @@ import {
   type ItemQuantitySelection,
   type PlannedUnitAllocation,
 } from '@/domains/billing/shared/allocation';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import {
   getActiveSessionForTable,
   transitionSessionInTransaction,
@@ -63,7 +63,7 @@ type PreparedAttempt =
 
 /** Карточная оплата выбранных позиций. Итог по-прежнему подтверждает webhook. */
 export async function startStripePayment(context: {
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
   selectedItemIds: string[];
   ip?: string;
 }): Promise<StartPaymentResult> {
@@ -79,7 +79,7 @@ export async function startStripePayment(context: {
 
 /** Запрос расчёта наличными. Платёж появится только после подтверждения staff. */
 export async function startCashPayment(context: {
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
   selectedItemIds: string[];
   ip?: string;
 }): Promise<StartCashPaymentResult> {
@@ -124,7 +124,7 @@ export async function startCashPaymentByStaff(context: {
 }
 
 async function prepareGuestAttempt(context: {
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
   selectedItemIds: string[];
   method: Extract<PaymentMethod, 'STRIPE' | 'CASH'>;
   ip?: string;
@@ -133,7 +133,7 @@ async function prepareGuestAttempt(context: {
     selectedItemIds: context.selectedItemIds,
     method: context.method,
     ip: context.ip,
-    actor: { type: 'GUEST', tableToken: context.tableToken },
+    actor: { type: 'GUEST', tableAccess: context.tableAccess },
   });
 }
 
@@ -143,15 +143,16 @@ async function prepareAttempt(context: {
   method: Extract<PaymentMethod, 'STRIPE' | 'CASH'>;
   ip?: string;
   actor:
-    | { type: 'GUEST'; tableToken: string | undefined }
+    | { type: 'GUEST'; tableAccess: string | undefined }
     | { type: 'STAFF'; sessionId: string; staffUserId: string; venueId: string };
 }): Promise<PreparedAttempt> {
   let session: ActiveSession | null = null;
 
   if (context.actor.type === 'GUEST') {
-    if (!context.actor.tableToken) return { ok: false, reason: 'no_table' };
-    const table = await resolveTableByToken(context.actor.tableToken);
-    if (!table) return { ok: false, reason: 'no_table' };
+    if (!context.actor.tableAccess) return { ok: false, reason: 'no_table' };
+    const access = await resolveGuestTableAccess(context.actor.tableAccess);
+    if (access.status !== 'valid') return { ok: false, reason: 'no_table' };
+    const table = access.table;
     session = await getActiveSessionForTable(table.tableId);
   } else {
     const staffSession = await prisma.diningSession.findFirst({
@@ -551,11 +552,12 @@ async function cancelAttempt(attemptId: string, reason: string): Promise<void> {
 
 export async function cancelGuestAttempt(input: {
   attemptId: string;
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
 }): Promise<void> {
-  if (!input.tableToken) return;
-  const table = await resolveTableByToken(input.tableToken);
-  if (!table) return;
+  if (!input.tableAccess) return;
+  const access = await resolveGuestTableAccess(input.tableAccess);
+  if (access.status !== 'valid') return;
+  const table = access.table;
   const attempt = await prisma.paymentAttempt.findFirst({
     where: { id: input.attemptId, bill: { session: { tableId: table.tableId } } },
     select: { id: true },

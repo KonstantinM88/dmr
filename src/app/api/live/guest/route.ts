@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { getGuestChangeFeed } from '@/domains/realtime/server/change-feed.service';
-import { TABLE_TOKEN_COOKIE } from '@/lib/venue';
+import { TABLE_ACCESS_COOKIE } from '@/lib/venue';
 
 const cursorSchema = z.string().datetime({ offset: true }).optional();
 
@@ -12,7 +12,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const cookieStore = await cookies();
   const feed = await getGuestChangeFeed(
-    cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
     parsed.data ? new Date(parsed.data) : undefined,
   );
   return Response.json(feed, { headers: { 'Cache-Control': 'private, no-store' } });

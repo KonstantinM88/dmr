@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { submitGuestOrder, submitOrderSchema } from '@/domains/orders/server/order.service';
 import type { SubmitOrderResult } from '@/domains/orders/shared/types';
-import { TABLE_TOKEN_COOKIE } from '@/lib/venue';
+import { TABLE_ACCESS_COOKIE } from '@/lib/venue';
 import {
   callWaiter,
   cancelGuestWaiterCall,
@@ -24,7 +24,7 @@ export async function submitOrderAction(payload: unknown): Promise<SubmitOrderRe
   const headerList = await headers();
 
   const result = await submitGuestOrder(parsed.data, {
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
     ip: headerList.get('x-forwarded-for')?.split(',')[0]?.trim(),
   });
 
@@ -36,7 +36,7 @@ export async function submitOrderAction(payload: unknown): Promise<SubmitOrderRe
 export async function callWaiterAction(): Promise<CallWaiterResult> {
   const cookieStore = await cookies();
   const result = await callWaiter({
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
   });
   if (result.ok) {
     revalidatePath('/[locale]', 'page');
@@ -51,7 +51,7 @@ export async function cancelWaiterCallAction(callId: string): Promise<{ ok: true
   const cookieStore = await cookies();
   await cancelGuestWaiterCall({
     callId: parsed.data,
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
   });
   revalidatePath('/[locale]', 'page');
   revalidatePath('/[locale]/service', 'page');

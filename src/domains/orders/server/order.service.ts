@@ -5,7 +5,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { addCents } from '@/lib/money';
 import { recordAuditLog, recordLifecycleEvent } from '@/domains/audit/server/audit.service';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import {
   getActiveSessionForTable,
   openSessionForTable,
@@ -68,13 +68,14 @@ type PreparedLine = {
  */
 export async function submitGuestOrder(
   input: SubmitOrderInput,
-  context: { tableToken: string | undefined; ip?: string },
+  context: { tableAccess: string | undefined; ip?: string },
 ): Promise<SubmitOrderResult> {
-  // Шаг 3: вход только по валидному opaque-токену стола.
-  if (!context.tableToken) return { ok: false, reason: 'no_table' };
+  // Шаг 3: вход только по подписанному пропуску последнего QR-сканирования.
+  if (!context.tableAccess) return { ok: false, reason: 'no_table' };
 
-  const table = await resolveTableByToken(context.tableToken);
-  if (!table) return { ok: false, reason: 'no_table' };
+  const access = await resolveGuestTableAccess(context.tableAccess);
+  if (access.status !== 'valid') return { ok: false, reason: 'no_table' };
+  const table = access.table;
 
   // Шаг 4: rate limit по столу.
   const limit = checkRateLimit(`order:${table.tableId}`, ORDER_RATE_LIMIT, ORDER_RATE_WINDOW_MS);

@@ -71,7 +71,7 @@ Claude Code / Codex и других агентов. Перед существе�
 8. `docs/` — архитектурные решения; при расхождении с кодом код имеет
    приоритет, но расхождение нужно исправить в docs или в коде.
 
-## Текущее состояние установки (2026-09-03)
+## Текущее состояние установки (2026-09-04)
 
 - Этапы 1–4 и согласованная часть Этапа 5 установлены и локально проверены
   в `D:\projects\dmr`. Остальной scope Этапа 5 не расширять без новой команды.
@@ -111,13 +111,14 @@ Claude Code / Codex и других агентов. Перед существе�
   полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 321
+- Последняя проверка успешна: ESLint, TypeScript, production build, 331
   unit-тестов, migration status, реальные Neon probes, `/api/health`,
   `/api/ready` и RU browser smoke гостевого меню/admin menu editor. Browser
   подтвердил 14 локализованных allergen options, сохранение и предзаполнение
   трёх связей у тестового блюда после reload, публичный вывод названий и
   открытие WebM в media viewer, explicit camera permission/denied UI,
-  заметный статус подключённого стола и инструкции двух печатных QR-карточек.
+  заметный статус подключённого стола, фото-fallback QR-сканера, новый
+  подписанный guest access и инструкции двух печатных QR-карточек.
   Backfill подтвердил
   25 planned/22 final allocations без quantity/amount нарушений; partial-unit
   SQL обновил ровно одну из двух единиц и полностью откатился. Авторизованный
@@ -240,6 +241,12 @@ flow. На Этапе 3 добавлены
 - Первый гостевой заказ за свободным активным столом автоматически открывает
   `DiningSession` (`actorType=GUEST`). Первый раунд всё равно всегда
   `SUBMITTED` и требует решения официанта, даже при `AUTO_ACCEPT`.
+- `/t/[token]` не кладёт постоянный bearer QR прямо в рабочую guest-cookie:
+  он выпускает HMAC-подписанный `dmr_table_access` с временем входа. Все
+  guest-domain actions повторно валидируют подпись, QR token и последний
+  `DiningSession.closedAt`; `CLOSED/CANCELLED` отзывает старый доступ без
+  ротации напечатанного QR. Новый заказ после закрытия возможен только после
+  повторного QR-entry. Старый cookie `dmr_table_token` больше не принимается.
 - `reorderApprovalMode` — snapshot на OrderRound; переключение влияет только
   на будущие дозаказы и каждое изменение аудируется.
 - Stage 3 заменил временный direct-serve: принятая позиция со станцией получает
@@ -298,8 +305,9 @@ flow. На Этапе 3 добавлены
 - Полностью оплаченная `DiningSession` закрывается отдельным действием
   `PAID → CLOSED`. Кнопка доступна с `MANAGE_DINING_SESSION` на экране стола
   и в операционном блоке `/[locale]/admin/zahlungen`; финансовые записи при
-  этом не переписываются. После `CLOSED` следующий заказ по действующему QR
-  создаёт новую сессию и нового participant.
+  этом не переписываются. После `CLOSED` прежний guest access немедленно
+  отклоняется сервером; повторный переход по действующему QR выдаёт новый
+  access grant, а следующий заказ создаёт новую сессию и нового participant.
 - Stage 5 позволяет выбрать весь остаток/целые строки OrderItem, а staff с
   `REGISTER_CASH_PAYMENT` — целое количество единиц от 1 до неоплаченного
   остатка строки. `PaymentAttemptAllocation` хранит quantity, серверную сумму
@@ -404,7 +412,10 @@ Stripe contract Этапа 4: все три переменные либо пус
   установка приложения и разрешение камеры сайту не требуются. Резервный
   production-сканер на `/[locale]` открывается отдельно и вызывает камеру
   только после явной кнопки разрешения; при отказе показывает Android/iOS
-  подсказки и ручной retry. Он принимает исключительно точный
+  подсказки и ручной retry. Для Android добавлен fallback через системную
+  камеру (`capture=environment`) и выбор готового фото: постоянный видеодоступ
+  сайту для этого не нужен, но конкретный picker зависит от ОС/браузера.
+  Он принимает исключительно точный
   `/t/<opaque-token>` текущего либо `NEXT_PUBLIC_SITE_URL` origin без
   query/hash, не заменяет server-side проверку токена и не является
   production-версией `/api/dev/qr-entry`.
@@ -502,7 +513,8 @@ npm run qr:generate:test
 - Smoke после запуска: `/api/health` → `status=ok`; `/api/ready` →
   `status=ready,database=up`; `/de` → 200; `/de/anmelden` → 200;
   неавторизованный `/de/admin` → redirect на `/de/anmelden`; валидный
-  `/t/<token>` → cookie `dmr_table_token`, redirect `/de`, бейдж `Tisch N`.
+  `/t/<token>` → подписанная cookie `dmr_table_access`, redirect `/de`, бейдж
+  `Tisch N`; после закрытия старая cookie показывает требование повторного QR.
 - Stage 3 smoke: без staff-cookie `/api/production/queue?kind=KITCHEN` и
   `/api/live/service` → 401; invalid realtime cursor → 400; с owner-session
   `/de/produktion/kueche` показывает текущий `QUEUED` тикет, а
@@ -548,6 +560,10 @@ npm run qr:generate:test
 - Одно заведение — текущий default; multi-venue не добавлять без решения.
 - Сейчас выбран polling. SSE можно включить только после измерения на реальном
   Hostinger в Этапе 6; не считать localhost-smoke достаточным.
+- Статический QR остаётся bearer URL: подписанный access закрывает старые
+  вкладки, но сохранённую ссылку можно открыть заново. До production выбрать
+  следующий уровень защиты от намеренного удалённого входа: подтверждение
+  нового устройства официантом (предпочтительно) или visit PIN.
 
 ## Рабочие правила для следующих изменений
 
@@ -572,6 +588,7 @@ npm run qr:generate:test
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-04 | Android QR UX получил независимый fallback через системную камеру/file picker и выбор готового фото; инструкции учитывают Chrome Site settings, Android App permissions и общий camera privacy switch. `/t/[token]` теперь выпускает HMAC-подписанный 8-часовой `dmr_table_access`; `CLOSED/CANCELLED` инвалидирует все ранее выданные grant на menu/order/payment/waiter-call/guest polling, а старый raw `dmr_table_token` не принимается. Добавлены RU/DE состояния повторного сканирования и 10 отрицательных/граничных тестов token/service. Проверены lint, typecheck, production build, 331 unit-тест, health/readiness, распознавание QR-файла, mobile 390×844 и чистые логи после перезапуска. | По просьбе владельца исправить непрактичный Android permission flow и отделить закончившееся посещение от следующего. Схема БД и напечатанные QR не менялись. Статический QR не доказывает физическое присутствие тому, кто сохранил URL; следующим security-решением выбрать waiter approval нового устройства или visit PIN. |
 | 2026-09-04 | QR-onboarding сделан понятнее для первого визита: основной путь через обычную камеру телефона показан пошагово, подключённый стол отображается заметным статусом, а резервный встроенный сканер получил отдельную кнопку разрешения, проверку permission state и Android/iOS-подсказки после запрета. Печатные карточки получили тот же трёхшаговый сценарий и пояснение, что приложение устанавливать не нужно. Добавлены unit-тесты определения платформы и browser-smoke permission denied/table connected/двух печатных карточек. | По просьбе владельца снизить сложность доступа к камере. Браузер не может программно отменить системный запрет, поэтому UI ведёт пользователя к настройке сайта и повторной проверке. Для будущего NFC принят совместимый подход: тот же `/t/[token]` URL в пассивной NDEF-метке, QR остаётся fallback. |
 | 2026-09-04 | Добавлен безопасный QR-сканер с камерой на гостевом DE/RU-меню, защищённая `MANAGE_TABLES_QR` печатная страница столов, повторяемый генератор тестовых PNG и favicon. Сканер принимает только точный `/t/<token>` текущего/настроенного origin; plaintext-токены не попадают в Client Component или логи. Созданы и декодированием проверены 1200×1200 PNG Tisch 1/2 для текущего Vercel test domain в ignored `temp/qr-print`; оба live-входа вернули ожидаемые 307, Secure HttpOnly table cookie и locale redirect. Проверены lint, typecheck, production build, 318 unit-тестов и browser smoke кнопки/permission-error/admin print layout. | Приложенные 83 Vercel-события: 0 error-level, 0 HTTP 5xx, 71 HTTP 200; только 6 favicon 404, устранённых `app/icon.svg`. Домен Vercel остаётся тестовым: до печати финальных ресторанных табличек выбрать постоянный домен и обновить `NEXT_PUBLIC_SITE_URL`. |
 | 2026-09-04 | Исправлен runtime 500 первого Vercel deployment: добавлен явный `MEDIA_STORAGE_PROVIDER=bundled` для read-only показа закоммиченных `public/uploads` файлов. `local` остаётся запрещённым в production; bundled UI скрывает upload/delete, API возвращает `503 storage_read_only`, storage adapter не допускает запись. Проверены lint, typecheck, production build, 308 unit-тестов и отдельный production-smoke: health ok, Neon ready, `/ru` 200, bundled media 200. | Vercel build был успешен, но `/de`, `/ru` и favicon падали из-за собственной production env-проверки. Для следующего deployment нужно заменить значение Vercel env `MEDIA_STORAGE_PROVIDER` с `local` на `bundled`; постоянный production по-прежнему требует S3-compatible storage. |

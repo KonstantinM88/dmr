@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getPublishedMenu } from '@/domains/menu/server/menu.queries';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import { getActiveSessionForTable } from '@/domains/sessions/server/session.service';
 import { canSubmitOrders } from '@/domains/sessions/server/session-state-machine';
 import { getRoundsForSession } from '@/domains/orders/server/order.queries';
@@ -13,7 +13,7 @@ import { CartSheet } from '@/components/order/CartSheet';
 import { OrderStatusPanel } from '@/components/order/OrderStatusPanel';
 import { formatCents } from '@/lib/money';
 import { getBillView } from '@/domains/billing/server/bill.service';
-import { DEFAULT_VENUE_SLUG, TABLE_TOKEN_COOKIE } from '@/lib/venue';
+import { DEFAULT_VENUE_SLUG, TABLE_ACCESS_COOKIE } from '@/lib/venue';
 import { PollingRefresh } from '@/components/realtime/PollingRefresh';
 import { WaiterCallButton } from '@/components/service/WaiterCallButton';
 import { TableQrScanner } from '@/components/tables/TableQrScanner';
@@ -43,8 +43,11 @@ export default async function MenuPage(props: {
   const tPayment = await getTranslations('payment');
 
   const cookieStore = await cookies();
-  const tableToken = cookieStore.get(TABLE_TOKEN_COOKIE)?.value;
-  const table = tableToken ? await resolveTableByToken(tableToken) : null;
+  const tableAccess = await resolveGuestTableAccess(
+    cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
+  );
+  const table = tableAccess.status === 'valid' ? tableAccess.table : null;
+  const accessExpired = tableAccess.status === 'expired';
 
   const session = table ? await getActiveSessionForTable(table.tableId) : null;
   const rounds = session ? await getRoundsForSession(session.id) : [];
@@ -98,6 +101,18 @@ export default async function MenuPage(props: {
                   {tTable('connectedHint')}
                 </p>
               </div>
+            </div>
+          ) : accessExpired ? (
+            <div
+              role="alert"
+              className="mt-5 max-w-xl rounded-[var(--radius-card)] border border-[var(--color-clay)]/50 bg-[var(--color-clay)]/10 p-4"
+            >
+              <p className="font-semibold text-[var(--color-paper)]">
+                {tTable('accessExpiredTitle')}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-paper-dim)]">
+                {tTable('accessExpiredBody')}
+              </p>
             </div>
           ) : (
             <div className="mt-5 max-w-xl rounded-[var(--radius-card)] border border-[var(--color-ink-700)] bg-black/10 p-4">

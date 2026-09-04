@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import Link from 'next/link';
 import { getEnv } from '@/lib/env';
 import { formatCents } from '@/lib/money';
-import { TABLE_TOKEN_COOKIE } from '@/lib/venue';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { TABLE_ACCESS_COOKIE } from '@/lib/venue';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import { getActiveSessionForTable } from '@/domains/sessions/server/session.service';
 import { getBillView } from '@/domains/billing/server/bill.service';
 import { isPaymentsAvailable } from '@/domains/payments/server/stripe.client';
@@ -34,13 +34,30 @@ export default async function PaymentPage(props: { params: Promise<{ locale: str
   const env = getEnv();
 
   const cookieStore = await cookies();
-  const tableToken = cookieStore.get(TABLE_TOKEN_COOKIE)?.value;
-  const table = tableToken ? await resolveTableByToken(tableToken) : null;
+  const tableAccess = await resolveGuestTableAccess(
+    cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
+  );
+  const table = tableAccess.status === 'valid' ? tableAccess.table : null;
 
   if (!table) {
     return (
       <main className="mx-auto w-full max-w-2xl px-5 py-16">
-        <p className="text-sm text-[var(--color-paper-dim)]">{tTable('scanRequired')}</p>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl">
+          {tableAccess.status === 'expired'
+            ? tTable('accessExpiredTitle')
+            : tTable('scanRequired')}
+        </h1>
+        {tableAccess.status === 'expired' && (
+          <p className="mt-3 text-sm leading-relaxed text-[var(--color-paper-dim)]">
+            {tTable('accessExpiredBody')}
+          </p>
+        )}
+        <Link
+          href={`/${locale}`}
+          className="mt-6 inline-block text-sm text-[var(--color-brass)] underline underline-offset-4"
+        >
+          {t('backToMenu')}
+        </Link>
       </main>
     );
   }

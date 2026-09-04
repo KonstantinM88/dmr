@@ -6,5 +6,5 @@
  */
 export const DEFAULT_VENUE_SLUG = 'restaurant';
 
-/** Cookie с активным QR-токеном стола (устанавливается маршрутом /t/[token]). */
-export const TABLE_TOKEN_COOKIE = 'dmr_table_token';
+/** Подписанный пропуск последнего QR-входа; неподписанный bearer QR cookie не принимается. */
+export const TABLE_ACCESS_COOKIE = 'dmr_table_access';

@@ -1,7 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { resolveTableByToken } from '@/domains/tables/server/table.service';
+import { resolveGuestTableAccess } from '@/domains/tables/server/guest-table-access.service';
 import {
   getActiveSessionForTable,
   openSessionForTable,
@@ -28,11 +28,12 @@ export async function getActiveWaiterCall(sessionId: string): Promise<WaiterCall
 }
 
 export async function callWaiter(context: {
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
 }): Promise<CallWaiterResult> {
-  if (!context.tableToken) return { ok: false, reason: 'no_table' };
-  const table = await resolveTableByToken(context.tableToken);
-  if (!table) return { ok: false, reason: 'no_table' };
+  if (!context.tableAccess) return { ok: false, reason: 'no_table' };
+  const access = await resolveGuestTableAccess(context.tableAccess);
+  if (access.status !== 'valid') return { ok: false, reason: 'no_table' };
+  const table = access.table;
 
   let session = await getActiveSessionForTable(table.tableId);
   if (!session) {
@@ -89,11 +90,12 @@ export async function callWaiter(context: {
 
 export async function cancelGuestWaiterCall(input: {
   callId: string;
-  tableToken: string | undefined;
+  tableAccess: string | undefined;
 }): Promise<void> {
-  if (!input.tableToken) return;
-  const table = await resolveTableByToken(input.tableToken);
-  if (!table) return;
+  if (!input.tableAccess) return;
+  const access = await resolveGuestTableAccess(input.tableAccess);
+  if (access.status !== 'valid') return;
+  const table = access.table;
   const call = await prisma.waiterCall.findFirst({
     where: {
       id: input.callId,

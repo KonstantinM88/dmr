@@ -12,7 +12,7 @@ import type {
   StartCashPaymentResult,
   StartPaymentResult,
 } from '@/domains/payments/shared/types';
-import { TABLE_TOKEN_COOKIE } from '@/lib/venue';
+import { TABLE_ACCESS_COOKIE } from '@/lib/venue';
 
 /**
  * Начало оплаты. Наружу уходит только `client_secret` — данные карты
@@ -28,7 +28,7 @@ export async function startPaymentAction(selectedItemIds: string[]): Promise<Sta
   const headerList = await headers();
 
   const result = await startStripePayment({
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
     selectedItemIds: parsed.data,
     ip: headerList.get('x-forwarded-for')?.split(',')[0]?.trim(),
   });
@@ -45,7 +45,7 @@ export async function startCashPaymentAction(
   const cookieStore = await cookies();
   const headerList = await headers();
   const result = await startCashPayment({
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
     selectedItemIds: parsed.data,
     ip: headerList.get('x-forwarded-for')?.split(',')[0]?.trim(),
   });
@@ -62,7 +62,7 @@ export async function cancelPaymentAction(attemptId: string): Promise<{ ok: true
   const cookieStore = await cookies();
   await cancelGuestAttempt({
     attemptId: parsed.data,
-    tableToken: cookieStore.get(TABLE_TOKEN_COOKIE)?.value,
+    tableAccess: cookieStore.get(TABLE_ACCESS_COOKIE)?.value,
   });
   revalidatePath('/[locale]/bezahlen', 'page');
   return { ok: true };
