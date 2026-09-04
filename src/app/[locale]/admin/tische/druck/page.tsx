@@ -99,7 +99,17 @@ export default async function PrintTableQrsPage(props: {
                 priority
               />
               <p className="mt-2 text-lg font-semibold">{t('printScan')}</p>
-              <p className="mt-1 text-sm text-[#555]">{t('printScanHint')}</p>
+              <ol className="mx-auto mt-3 max-w-[19rem] space-y-2 text-left text-sm text-[#333]">
+                {[t('printStep1'), t('printStep2'), t('printStep3')].map((step, index) => (
+                  <li key={step} className="flex items-start gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#111] text-xs font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 text-sm font-semibold text-[#476451]">{t('printNoApp')}</p>
             </article>
           ))}
         </div>

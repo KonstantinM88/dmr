@@ -1,5 +1,14 @@
 const TABLE_QR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 
+export type CameraHelpPlatform = 'android' | 'ios' | 'other';
+
+/** Выбирает короткую инструкцию без передачи user agent на сервер. */
+export function detectCameraHelpPlatform(userAgent: string): CameraHelpPlatform {
+  if (/Android/i.test(userAgent)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return 'ios';
+  return 'other';
+}
+
 /**
  * Проверяет отсканированный QR до перехода браузера.
  * Разрешены только абсолютные URL доверенного origin и точный /t/<token>.

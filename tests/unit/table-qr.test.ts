@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseTrustedTableQrUrl } from '@/domains/tables/shared/table-qr';
+import {
+  detectCameraHelpPlatform,
+  parseTrustedTableQrUrl,
+} from '@/domains/tables/shared/table-qr';
 
 const token = 'abcdefghijklmnop_1234567890-ABCD';
 const productionOrigin = 'https://dmr.example.com';
@@ -31,5 +34,15 @@ describe('trusted table QR URL parser', () => {
     'not-a-url',
   ])('rejects an untrusted or malformed QR value: %s', (value) => {
     expect(parseTrustedTableQrUrl(value, [productionOrigin])).toBeNull();
+  });
+});
+
+describe('camera help platform', () => {
+  it.each([
+    ['Mozilla/5.0 (Linux; Android 15)', 'android'],
+    ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 'ios'],
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'other'],
+  ] as const)('maps %s to %s', (userAgent, expected) => {
+    expect(detectCameraHelpPlatform(userAgent)).toBe(expected);
   });
 });

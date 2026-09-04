@@ -111,12 +111,13 @@ Claude Code / Codex и других агентов. Перед существе�
   полностью чистый сценарий.
 - Текущая state machine разрешает оплатить/закрыть стол до завершения
   production tickets. Не менять это правило без отдельного бизнес-решения.
-- Последняя проверка успешна: ESLint, TypeScript, production build, 318
+- Последняя проверка успешна: ESLint, TypeScript, production build, 321
   unit-тестов, migration status, реальные Neon probes, `/api/health`,
   `/api/ready` и RU browser smoke гостевого меню/admin menu editor. Browser
   подтвердил 14 локализованных allergen options, сохранение и предзаполнение
   трёх связей у тестового блюда после reload, публичный вывод названий и
-  открытие WebM в media viewer.
+  открытие WebM в media viewer, explicit camera permission/denied UI,
+  заметный статус подключённого стола и инструкции двух печатных QR-карточек.
   Backfill подтвердил
   25 planned/22 final allocations без quantity/amount нарушений; partial-unit
   SQL обновил ровно одну из двух единиц и полностью откатился. Авторизованный
@@ -399,15 +400,23 @@ Stripe contract Этапа 4: все три переменные либо пус
 - Повторный сид не показывает существующие QR-токены. Не ротировать токены
   ради повторного вывода: ротация отзывает старые напечатанные QR.
 
-- Production-сканер на `/[locale]` работает только после явного клика и
-  принимает исключительно точный `/t/<opaque-token>` текущего либо
-  `NEXT_PUBLIC_SITE_URL` origin без query/hash. Он не заменяет server-side
-  проверку токена и не является production-версией `/api/dev/qr-entry`.
+- Основной guest QR-flow — обычная камера телефона → HTTPS `/t/[token]`;
+  установка приложения и разрешение камеры сайту не требуются. Резервный
+  production-сканер на `/[locale]` открывается отдельно и вызывает камеру
+  только после явной кнопки разрешения; при отказе показывает Android/iOS
+  подсказки и ручной retry. Он принимает исключительно точный
+  `/t/<opaque-token>` текущего либо `NEXT_PUBLIC_SITE_URL` origin без
+  query/hash, не заменяет server-side проверку токена и не является
+  production-версией `/api/dev/qr-entry`.
 - Печатная страница `/[locale]/admin/tische/druck` требует
   `MANAGE_TABLES_QR`; plaintext token не передаётся в Client Component.
   `npm run qr:generate:test` создаёт PNG столов 1 и 2 из действующих токенов
   в `temp/qr-print` с доменом из `NEXT_PUBLIC_SITE_URL`. До выбора финального
   домена считать их только тестовыми и после ротации генерировать заново.
+- Для будущего NFC использовать пассивную NDEF-метку с тем же HTTPS
+  `/t/<opaque-token>` URL, что QR; отдельный backend-flow не создавать, QR
+  оставлять fallback. После token rotation перезаписывать метку одновременно
+  с заменой QR. Web NFC не считать кроссплатформенным admin writer.
 
 ## Prisma 7 и база данных
 
@@ -563,6 +572,7 @@ npm run qr:generate:test
 
 | Дата | Изменение | Контекст |
 | --- | --- | --- |
+| 2026-09-04 | QR-onboarding сделан понятнее для первого визита: основной путь через обычную камеру телефона показан пошагово, подключённый стол отображается заметным статусом, а резервный встроенный сканер получил отдельную кнопку разрешения, проверку permission state и Android/iOS-подсказки после запрета. Печатные карточки получили тот же трёхшаговый сценарий и пояснение, что приложение устанавливать не нужно. Добавлены unit-тесты определения платформы и browser-smoke permission denied/table connected/двух печатных карточек. | По просьбе владельца снизить сложность доступа к камере. Браузер не может программно отменить системный запрет, поэтому UI ведёт пользователя к настройке сайта и повторной проверке. Для будущего NFC принят совместимый подход: тот же `/t/[token]` URL в пассивной NDEF-метке, QR остаётся fallback. |
 | 2026-09-04 | Добавлен безопасный QR-сканер с камерой на гостевом DE/RU-меню, защищённая `MANAGE_TABLES_QR` печатная страница столов, повторяемый генератор тестовых PNG и favicon. Сканер принимает только точный `/t/<token>` текущего/настроенного origin; plaintext-токены не попадают в Client Component или логи. Созданы и декодированием проверены 1200×1200 PNG Tisch 1/2 для текущего Vercel test domain в ignored `temp/qr-print`; оба live-входа вернули ожидаемые 307, Secure HttpOnly table cookie и locale redirect. Проверены lint, typecheck, production build, 318 unit-тестов и browser smoke кнопки/permission-error/admin print layout. | Приложенные 83 Vercel-события: 0 error-level, 0 HTTP 5xx, 71 HTTP 200; только 6 favicon 404, устранённых `app/icon.svg`. Домен Vercel остаётся тестовым: до печати финальных ресторанных табличек выбрать постоянный домен и обновить `NEXT_PUBLIC_SITE_URL`. |
 | 2026-09-04 | Исправлен runtime 500 первого Vercel deployment: добавлен явный `MEDIA_STORAGE_PROVIDER=bundled` для read-only показа закоммиченных `public/uploads` файлов. `local` остаётся запрещённым в production; bundled UI скрывает upload/delete, API возвращает `503 storage_read_only`, storage adapter не допускает запись. Проверены lint, typecheck, production build, 308 unit-тестов и отдельный production-smoke: health ok, Neon ready, `/ru` 200, bundled media 200. | Vercel build был успешен, но `/de`, `/ru` и favicon падали из-за собственной production env-проверки. Для следующего deployment нужно заменить значение Vercel env `MEDIA_STORAGE_PROVIDER` с `local` на `bundled`; постоянный production по-прежнему требует S3-compatible storage. |
 | 2026-09-03 | В редактор продукта добавлен локализованный multi-select полного справочника аллергенов EU-14, видимые allergen badges в admin-карточке, server-side проверка уникальных существующих ID и атомарная синхронизация `MenuItemAllergen`. Публичное меню продолжает получать названия через существующий DE/RU translation fallback. Загруженные владельцем media проверены на диске и в browser: изображения нормализованы в WebP, видео — в WebM с WebP-постерами, WebM открывается в полноэкранном viewer. Проверены lint, typecheck, production build, 304 unit-теста, health/readiness и свежий dev-log без ошибок. | Устранён разрыв: schema, seed и guest query поддерживали аллергены, но admin editor раньше их не загружал и не сохранял. Schema/migration не менялись. |

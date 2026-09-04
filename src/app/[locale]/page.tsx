@@ -82,14 +82,40 @@ export default async function MenuPage(props: {
           </h1>
           <p className="mt-4 max-w-lg text-sm leading-relaxed text-[var(--color-paper-dim)] sm:text-base">{t('subtitle')}</p>
 
-          {table && (
-            <p className="mt-5 inline-flex items-center rounded-full border border-[var(--color-brass-dim)] px-3 py-1 font-[family-name:var(--font-mono)] text-xs text-[var(--color-brass)]">
-              {tTable('label', { label: table.label })}
-            </p>
-          )}
-
-          {!table && (
-            <p className="mt-5 text-sm text-[var(--color-paper-dim)]">{tTable('scanRequired')}</p>
+          {table ? (
+            <div className="mt-5 flex max-w-xl items-start gap-3 rounded-[var(--radius-card)] border border-[var(--color-sage)]/50 bg-[var(--color-sage)]/10 p-4">
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-sage)] font-bold text-[var(--color-ink-950)]"
+              >
+                ✓
+              </span>
+              <div>
+                <p className="font-semibold text-[var(--color-paper)]">
+                  {tTable('connected', { label: table.label })}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--color-paper-dim)]">
+                  {tTable('connectedHint')}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 max-w-xl rounded-[var(--radius-card)] border border-[var(--color-ink-700)] bg-black/10 p-4">
+              <p className="font-semibold text-[var(--color-paper)]">{tTable('scanRequired')}</p>
+              <ol className="mt-3 grid gap-2 text-sm text-[var(--color-paper-dim)] sm:grid-cols-3">
+                {[tTable('nativeStep1'), tTable('nativeStep2'), tTable('nativeStep3')].map((step, index) => (
+                  <li key={step} className="flex items-start gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--color-brass-dim)] text-[0.65rem] text-[var(--color-brass)]">
+                      {index + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 text-xs font-semibold text-[var(--color-sage)]">
+                {tTable('noAppRequired')}
+              </p>
+            </div>
           )}
 
           <TableQrScanner
